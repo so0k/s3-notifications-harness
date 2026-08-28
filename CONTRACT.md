@@ -53,3 +53,7 @@ destroy C, A  (cleanup, deferred; always runs; empties bucket first)
 ```
 Assertion helper: `GetBucketNotificationConfiguration` → set of LambdaFunctionArn present. Stage skipping via `test_structure.RunTestStage` + `SKIP_*` env.
 Expected: `TestAwsCdk` GREEN, `TestTerraform` RED at "deploy B → config ⊇ {a,b}" (and the B plan output logged shows it replacing A's target). The test must log the terraform plan for B and C before applying.
+
+## Timing caveats (learned from real runs)
+- S3 applies a new notification configuration eventually — AWS documents "about five minutes". `GetBucketNotificationConfiguration` is read-after-write consistent and is the assertion that proves merge semantics; delivery is only asserted after `waitForTargetLive` (≤6 min of warm-up probes) for the target the stage just deployed. A delivery-only failure is a harness timeout, not a merge failure.
+- `awscc_*` IAM resources go through Cloud Control, which rejects `GetSessionToken` credentials for IAM; run with `aws-vault exec --no-session`.

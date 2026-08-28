@@ -21,9 +21,21 @@ Three stacks per suite:
 
 Every sample lambda (`lambda/index.mjs`) forwards its S3 events to a per-stack SQS results queue.
 
+## Observed results (2026-08-28, account 694710432912, us-east-1)
+
+| Stage | awscdk | terraform 1.15.9 + awscc 1.98 |
+|---|---|---|
+| deploy A → config ⊇ {a} | ✅ | ✅ |
+| deploy B → config ⊇ {a,b} | ✅ | ❌ config = {b} — `aws_s3_bucket_notification` plan only says "will be created", A's target is dropped silently |
+| deploy C → config ⊇ {a,b,c} | ✅ | ❌ config = {c} |
+| re-deploy A → config ⊇ {a,b,c} | ✅ (no-op) | ❌ plan: `awscc_s3_bucket.bucket will be updated in-place` → config = {a} |
+| destroy B → config = {a,c} | ✅ | ❌ config = {} (destroying B's authoritative resource wipes everything) |
+
+CDK only passes because `cdk.json` enables `@aws-cdk/aws-s3:keepNotificationInImportedBucket`; without it the owning stack's handler takes the `Managed` path and overwrites the whole configuration on every deploy, exactly like Terraform.
+
 ## Prereqs
 
 ```sh
 mise install            # terraform 1.15.9, go, node 24, aws-cli
-aws-vault exec tcons-vincent -- make -C integ test
+aws-vault exec --no-session tcons-vincent -- make -C integ test
 ```

@@ -3,6 +3,7 @@ package integ
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -56,29 +57,55 @@ type ownerUpload struct {
 	queueURL string
 }
 
-// assertDelivery uploads "<owner>/<n>.txt" for every entry in owners, then asserts each
-// entry's results queue receives exactly that key within a 90s long poll (per CONTRACT.md).
-// Non-fatal: see assertNotificationTargets.
+// waitForTargetLive absorbs S3's propagation window for a freshly written notification
+// configuration -- AWS documents "about five minutes" before changes take effect, and
+// objects put before then are silently not delivered. It uploads throwaway
+// "<owner>/warmup-<n>.txt" probes every 20s for up to 6 minutes until the owner's results
+// queue echoes one. Call it right after deploying the stack that adds/keeps that target;
+// assertDelivery can then stay short and strict. Non-fatal: see assertNotificationTargets.
+func waitForTargetLive(t *testing.T, region, bucket string, o ownerUpload) {
+	t.Helper()
+
+	const attempts, waitSeconds = 18, 20
+	for attempt := 1; attempt <= attempts; attempt++ {
+		key := fmt.Sprintf("%s/warmup-%d.txt", o.owner, attempt)
+		harnessaws.UploadS3File(t, region, bucket, key, "s3-notifications-harness warmup probe")
+		if waitForKey(t, region, o.queueURL, bucket, o.owner+"/warmup-", waitSeconds) {
+			t.Logf("owner %s: target live after %d warmup probe(s)", o.owner, attempt)
+			return
+		}
+	}
+	assert.Fail(t, "target never went live", "owner %s's results queue (%s) received no warmup probe within %ds", o.owner, o.queueURL, attempts*waitSeconds)
+}
+
+// assertDelivery proves each owner's target is live now: it uploads "<owner>/<n>.txt" and
+// expects the owner's results queue to echo it back within a short window. Targets are
+// expected to have been warmed by waitForTargetLive after their deploy; a single retry
+// covers a probe lost at the tail of that window. Non-fatal: see assertNotificationTargets.
 func assertDelivery(t *testing.T, region, bucket string, n int, owners []ownerUpload) {
 	t.Helper()
 
-	keys := make(map[string]string, len(owners))
+	const attempts, waitSeconds = 2, 45
 	for _, o := range owners {
-		key := fmt.Sprintf("%s/%d.txt", o.owner, n)
-		keys[o.owner] = key
-		harnessaws.UploadS3File(t, region, bucket, key, fmt.Sprintf("s3-notifications-harness payload: %s", key))
-	}
-
-	for _, o := range owners {
-		wantKey := keys[o.owner]
-		if !waitForKey(t, region, o.queueURL, bucket, wantKey, 90) {
-			assert.Fail(t, "delivery timed out", "owner %s's results queue (%s) never received %s within 90s", o.owner, o.queueURL, wantKey)
+		delivered := false
+		for attempt := 1; attempt <= attempts && !delivered; attempt++ {
+			key := fmt.Sprintf("%s/%d.txt", o.owner, n)
+			if attempt > 1 {
+				key = fmt.Sprintf("%s/%d-r%d.txt", o.owner, n, attempt)
+			}
+			harnessaws.UploadS3File(t, region, bucket, key, fmt.Sprintf("s3-notifications-harness payload: %s", key))
+			delivered = waitForKey(t, region, o.queueURL, bucket, fmt.Sprintf("%s/%d", o.owner, n), waitSeconds)
+			if !delivered {
+				t.Logf("owner %s: probe %s not delivered within %ds (attempt %d/%d)", o.owner, key, waitSeconds, attempt, attempts)
+			}
 		}
+		assert.True(t, delivered, "owner %s's results queue (%s) never received any %s/%d* probe across %d attempts", o.owner, o.queueURL, o.owner, n, attempts)
 	}
 }
 
 // waitForKey polls queueURL, draining (deleting) every message it reads along the way,
-// until it sees one whose body matches bucket/wantKey or timeoutSeconds elapses. Returns
+// until it sees one whose body matches bucket and a key starting with wantKey (probe
+// retries share that prefix) or timeoutSeconds elapses. Returns
 // false on timeout or a queue/receive error (logged, not asserted -- the caller decides
 // whether that's fatal).
 func waitForKey(t *testing.T, region, queueURL, bucket, wantKey string, timeoutSeconds int) bool {
@@ -105,7 +132,7 @@ func waitForKey(t *testing.T, region, queueURL, bucket, wantKey string, timeoutS
 			t.Logf("failed to delete drained message from %s: %v", queueURL, derr)
 		}
 
-		if body.Bucket == bucket && body.Key == wantKey {
+		if body.Bucket == bucket && strings.HasPrefix(body.Key, wantKey) {
 			return true
 		}
 		t.Logf("drained unrelated message from %s (bucket=%s key=%s), still waiting for %s", queueURL, body.Bucket, body.Key, wantKey)
@@ -113,17 +140,17 @@ func waitForKey(t *testing.T, region, queueURL, bucket, wantKey string, timeoutS
 }
 
 // assertNoCrossDelivery does a single short (15s) poll on queueURL, checking it does NOT
-// receive unexpectedKey -- e.g. that stack B's target doesn't also receive a/-prefixed
+// receive any key under unexpectedPrefix -- e.g. that stack B's target doesn't also receive a/-prefixed
 // events meant only for stack A. Kept deliberately cheap (one queue, one short poll, called
 // at most once per validate stage) rather than checking every owner pair at every stage:
 // that would multiply total suite runtime for marginal extra signal on top of the
 // structural assertNotificationTargets check above.
-func assertNoCrossDelivery(t *testing.T, region, queueURL, bucket, unexpectedKey string) {
+func assertNoCrossDelivery(t *testing.T, region, queueURL, bucket, unexpectedPrefix string) {
 	t.Helper()
 
 	msg := harnessaws.WaitForQueueMessage(t, region, queueURL, 15)
 	if msg.Error != nil {
-		t.Logf("confirmed no message for %s on %s within 15s (expected)", unexpectedKey, queueURL)
+		t.Logf("confirmed no message under %s on %s within 15s (expected)", unexpectedPrefix, queueURL)
 		return
 	}
 
@@ -133,8 +160,8 @@ func assertNoCrossDelivery(t *testing.T, region, queueURL, bucket, unexpectedKey
 
 	var body resultMessage
 	_ = json.Unmarshal([]byte(msg.MessageBody), &body)
-	assert.NotEqual(t, unexpectedKey, body.Key, "queue %s unexpectedly received bucket=%s key=%s -- notification prefix scoping is broken", queueURL, body.Bucket, body.Key)
-	t.Logf("queue %s received an unrelated message (bucket=%s key=%s) while polling for absence of %s -- drained, continuing", queueURL, body.Bucket, body.Key, unexpectedKey)
+	assert.False(t, strings.HasPrefix(body.Key, unexpectedPrefix), "queue %s unexpectedly received bucket=%s key=%s -- notification prefix scoping is broken", queueURL, body.Bucket, body.Key)
+	t.Logf("queue %s received an unrelated message (bucket=%s key=%s) while polling for absence of %s* -- drained, continuing", queueURL, body.Bucket, body.Key, unexpectedPrefix)
 }
 
 func mapBoolKeys(m map[string]bool) []string {

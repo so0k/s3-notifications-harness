@@ -96,6 +96,7 @@ func runHarness(t *testing.T, suite Suite, suffix, region string) {
 	test_structure.RunTestStage(t, "deploy_a", func() {
 		suite.Deploy(t, "a")
 		refreshOutputs("a")
+		waitForTargetLive(t, region, bucket, ownerUpload{owner: "a", queueURL: queueURL["a"]})
 	})
 	test_structure.RunTestStage(t, "validate_a", func() {
 		assertNotificationTargets(t, region, bucket, []string{lambdaArn["a"]}, nil)
@@ -110,6 +111,7 @@ func runHarness(t *testing.T, suite Suite, suffix, region string) {
 		t.Logf("[%s] plan for stack b (before apply):\n%s", suite.Name(), plan)
 		suite.Deploy(t, "b")
 		refreshOutputs("b")
+		waitForTargetLive(t, region, bucket, ownerUpload{owner: "b", queueURL: queueURL["b"]})
 	})
 	test_structure.RunTestStage(t, "validate_b", func() {
 		// Expected RED for TestTerraform: see runHarness's doc comment.
@@ -118,7 +120,7 @@ func runHarness(t *testing.T, suite Suite, suffix, region string) {
 			{owner: "a", queueURL: queueURL["a"]},
 			{owner: "b", queueURL: queueURL["b"]},
 		})
-		assertNoCrossDelivery(t, region, queueURL["a"], bucket, "b/2.txt")
+		assertNoCrossDelivery(t, region, queueURL["a"], bucket, "b/")
 	})
 
 	// --- deploy C ---
@@ -127,6 +129,7 @@ func runHarness(t *testing.T, suite Suite, suffix, region string) {
 		t.Logf("[%s] plan for stack c (before apply):\n%s", suite.Name(), plan)
 		suite.Deploy(t, "c")
 		refreshOutputs("c")
+		waitForTargetLive(t, region, bucket, ownerUpload{owner: "c", queueURL: queueURL["c"]})
 	})
 	test_structure.RunTestStage(t, "validate_c", func() {
 		assertNotificationTargets(t, region, bucket, []string{lambdaArn["a"], lambdaArn["b"], lambdaArn["c"]}, nil)
@@ -135,7 +138,7 @@ func runHarness(t *testing.T, suite Suite, suffix, region string) {
 			{owner: "b", queueURL: queueURL["b"]},
 			{owner: "c", queueURL: queueURL["c"]},
 		})
-		assertNoCrossDelivery(t, region, queueURL["a"], bucket, "c/3.txt")
+		assertNoCrossDelivery(t, region, queueURL["a"], bucket, "c/")
 	})
 
 	// --- re-deploy A ---
@@ -144,6 +147,7 @@ func runHarness(t *testing.T, suite Suite, suffix, region string) {
 		t.Logf("[%s] plan for stack a (re-deploy, after b and c):\n%s", suite.Name(), plan)
 		suite.Deploy(t, "a")
 		refreshOutputs("a")
+		waitForTargetLive(t, region, bucket, ownerUpload{owner: "a", queueURL: queueURL["a"]})
 	})
 	test_structure.RunTestStage(t, "validate_redeploy_a", func() {
 		assertNotificationTargets(t, region, bucket, []string{lambdaArn["a"], lambdaArn["b"], lambdaArn["c"]}, nil)

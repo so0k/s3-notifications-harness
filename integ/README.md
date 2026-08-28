@@ -38,16 +38,16 @@ cd awscdk && npm install && cd ..  # aws-cdk-lib / aws-cdk CLI for the cdk suite
 ## Running
 
 ```sh
-aws-vault exec tcons-vincent -- make test      # both suites
-aws-vault exec tcons-vincent -- make test-cdk  # just TestAwsCdk
-aws-vault exec tcons-vincent -- make test-tf   # just TestTerraform
+aws-vault exec --no-session tcons-vincent -- make test      # both suites
+aws-vault exec --no-session tcons-vincent -- make test-cdk  # just TestAwsCdk
+aws-vault exec --no-session tcons-vincent -- make test-tf   # just TestTerraform
 ```
 
 Or drive `go test` directly:
 
 ```sh
-aws-vault exec tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestAwsCdk$' ./...
-aws-vault exec tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestTerraform$' ./...
+aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestAwsCdk$' ./...
+aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestTerraform$' ./...
 ```
 
 Region defaults to `us-east-1` (`AWS_REGION`, set by `.mise.toml`); to point at a
