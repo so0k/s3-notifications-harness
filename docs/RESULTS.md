@@ -177,3 +177,12 @@ Drift question answered: with the attribute unset in config, awscc's refresh kee
 value in state and plans nothing. `lifecycle { ignore_changes = [notification_configuration] }` is not
 required for this case; it remains the recommended guard against future updates of other bucket
 attributes sending `NotificationConfiguration: null`.
+
+## 2026-08-28 — cdktn scenario live run
+
+`TestCdktn` **PASS** (1367s): cdktn 0.24 + `@cdktn/provider-awscc` 1.2.0 + `@cdktn/provider-cfncompat` 1.0.0
+(`CustomResource`, provider 0.2.0) porting `terraform/cfncompat/` 1:1 as `BucketNotificationsPolyfill`.
+Same stage results as the cfncompat HCL scenario (A→B→C merge, A re-deploy no-op, destroy B → {a,c}).
+Two earlier attempts failed on transient AWS errors unrelated to the app (STS `GetCallerIdentity` 408;
+Cloud Control `InternalFailure` creating `AWS::IAM::Role`) — the driver now retries a deploy once on the
+latter.
