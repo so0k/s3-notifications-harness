@@ -47,7 +47,11 @@ resource "aws_iam_role_policy_attachment" "basic_execution" {
 data "archive_file" "lambda" {
   type        = "zip"
   source_file = "${path.module}/../../../../lambda/index.js"
-  output_path = "${path.module}/dist/index-${var.suffix}-${var.owner}.zip"
+  # path.root (the calling root module's own directory), not path.module: this module is
+  # reused as-is by both the "aws" and "cfncompat" scenarios (see terraform/README.md), which
+  # would otherwise resolve to the exact same path.module/dist/... and have both scenarios'
+  # data.archive_file.lambda write the same file when run in place with the same suffix.
+  output_path = "${path.root}/dist/index-${var.suffix}-${var.owner}.zip"
 }
 
 resource "aws_lambda_function" "handler" {

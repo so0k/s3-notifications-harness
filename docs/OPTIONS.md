@@ -16,8 +16,9 @@ TerraConstructs (cdktn 0.23, `@cdktn/provider-aws`) has a single authoritative
 Fourth sibling next to `awscc/` and `aws/`: each stack deploys the CDK python handler
 (archive_file → aws_lambda_function python3.12) + role (Get/PutBucketNotification) +
 `cfncompat_custom_resource { service_token, resource_properties = { BucketName,
-NotificationConfiguration, Managed = "false" }, stack_id = "<stack>" }`, response bucket
-shared per run. Terratest gets a `TestTerraformCfncompat` target; expected GREEN.
+NotificationConfiguration, Managed = "false" }, stack_id = "<stack>" }`, one response bucket
+per stack (better for destroy isolation than one shared per run -- see
+`terraform/cfncompat/README.md`). Terratest gets a `TestTerraformCfncompat` target; expected GREEN.
 - Pros: smallest change; first-ever real-AWS proof of cfncompat's protocol engine;
   isolates provider bugs from construct/tooling bugs; directly reusable as a cfncompat
   integ fixture.

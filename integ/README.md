@@ -1,14 +1,15 @@
 # integ
 
 Terratest (Go) suite that drives the CONTRACT.md deploy/validate flow against
-`../awscdk/` and both terraform scenarios (`../terraform/awscc/`, `../terraform/aws/`),
-side by side, through one shared `Suite` interface (`suite.go`): `cdkSuite` shells out to
-`npx cdk` in `../awscdk`; `tfSuite` copies `../terraform/<provider>/stack-<x>` (plus
-`../terraform/<provider>/modules` and `../lambda`, via the whole-repo copy
-`test_structure.CopyTerraformFolderToTemp` does) into a temp dir and drives it with
-terratest's `terraform` module, where `provider` is `"awscc"` or `"aws"`.
+`../awscdk/` and all three terraform scenarios (`../terraform/awscc/`, `../terraform/aws/`,
+`../terraform/cfncompat/`), side by side, through one shared `Suite` interface
+(`suite.go`): `cdkSuite` shells out to `npx cdk` in `../awscdk`; `tfSuite` copies
+`../terraform/<provider>/stack-<x>` (plus `../terraform/<provider>/modules` and
+`../lambda`, via the whole-repo copy `test_structure.CopyTerraformFolderToTemp` does) into
+a temp dir and drives it with terratest's `terraform` module, where `provider` is
+`"awscc"`, `"aws"`, or `"cfncompat"`.
 
-`harness_test.go` runs the identical flow for all three:
+`harness_test.go` runs the identical flow for all four:
 
 ```
 deploy A      -> assert config includes {a};       upload a/1         -> queue a receives
@@ -35,6 +36,15 @@ awscc's inline config -- see `../terraform/README.md` and `TestTerraformAws`'s d
 in `harness_test.go` for exactly what question comparing it against `TestTerraformAwscc`
 is meant to answer.
 
+`TestTerraformCfncompat` runs the same flow against `../terraform/cfncompat/`, which
+replaces `aws_s3_bucket_notification` everywhere (including on stack-a's own target) with
+a `cfncompat_custom_resource` driving AWS CDK's own bucket-notifications Lambda handler in
+its "unmanaged" (merge) mode -- see `../docs/OPTIONS.md` (Option A) and
+`../terraform/cfncompat/README.md`. **Expected: fully GREEN**, unlike `TestTerraformAwscc`
+and `TestTerraformAws` -- each stack's custom resource GETs the bucket's existing
+notification configuration, merges in only its own entry, and PUTs the merged result back,
+so no stack's apply clobbers another's target.
+
 ## Prereqs
 
 ```sh
@@ -45,10 +55,11 @@ cd awscdk && npm install && cd ..  # aws-cdk-lib / aws-cdk CLI for the cdk suite
 ## Running
 
 ```sh
-aws-vault exec --no-session tcons-vincent -- make test        # all three suites
-aws-vault exec --no-session tcons-vincent -- make test-cdk    # just TestAwsCdk
-aws-vault exec --no-session tcons-vincent -- make test-awscc  # just TestTerraformAwscc
-aws-vault exec --no-session tcons-vincent -- make test-aws    # just TestTerraformAws
+aws-vault exec --no-session tcons-vincent -- make test             # all four suites
+aws-vault exec --no-session tcons-vincent -- make test-cdk         # just TestAwsCdk
+aws-vault exec --no-session tcons-vincent -- make test-awscc       # just TestTerraformAwscc
+aws-vault exec --no-session tcons-vincent -- make test-aws         # just TestTerraformAws
+aws-vault exec --no-session tcons-vincent -- make test-cfncompat   # just TestTerraformCfncompat
 ```
 
 Or drive `go test` directly:
@@ -57,6 +68,7 @@ Or drive `go test` directly:
 aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestAwsCdk$' ./...
 aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestTerraformAwscc$' ./...
 aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestTerraformAws$' ./...
+aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestTerraformCfncompat$' ./...
 ```
 
 Region defaults to `us-east-1` (`AWS_REGION`, set by `.mise.toml`); to point at a
@@ -77,7 +89,7 @@ for inspection after a run.
 ```
 integ/
   suite.go            # Suite interface + cdkSuite / tfSuite implementations
-  harness_test.go      # TestAwsCdk, TestTerraformAwscc, TestTerraformAws -- the shared CONTRACT.md flow
+  harness_test.go      # TestAwsCdk, TestTerraformAwscc, TestTerraformAws, TestTerraformCfncompat -- the shared CONTRACT.md flow
   assert.go            # assertNotificationTargets, assertDelivery, assertNoCrossDelivery
   aws/
     s3.go              # GetS3BucketNotificationE, UploadS3File, EmptyBucket (all object versions)

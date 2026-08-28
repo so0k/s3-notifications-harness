@@ -66,7 +66,24 @@ func TestTerraformAws(t *testing.T) {
 	runHarness(t, NewTerraformSuite(suffix, region, "aws"), suffix, region)
 }
 
-// runHarness drives CONTRACT.md's integ/ flow identically for all three suites:
+// TestTerraformCfncompat runs the identical flow against terraform/cfncompat/, where
+// every stack -- including stack-a, which owns the bucket via a plain aws_s3_bucket --
+// attaches its notification target purely through a cfncompat_custom_resource driving
+// AWS CDK's own bucket-notifications Lambda handler in its "unmanaged" (merge) mode
+// (Managed = "false"), instead of through aws_s3_bucket_notification. Expected: fully
+// GREEN, unlike TestTerraformAwscc and TestTerraformAws -- each stack's custom resource
+// GETs the bucket's existing notification configuration, merges in only its own entry
+// (tracked by a stack_id-prefixed Id), and PUTs the merged result back, so no stack's
+// apply clobbers another's target. See docs/OPTIONS.md (Option A) and
+// terraform/cfncompat/README.md.
+func TestTerraformCfncompat(t *testing.T) {
+	suffix := strings.ToLower(random.UniqueId())
+	region := awsRegion()
+	t.Logf("suite=terraform-cfncompat suffix=%s region=%s", suffix, region)
+	runHarness(t, NewTerraformSuite(suffix, region, "cfncompat"), suffix, region)
+}
+
+// runHarness drives CONTRACT.md's integ/ flow identically for all four suites:
 //
 //	deploy A      -> assert config includes {a};       upload a/1          -> queue a receives
 //	deploy B      -> assert config includes {a,b};     upload a/2,b/2      -> queues a,b receive
@@ -86,9 +103,9 @@ func runHarness(t *testing.T, suite Suite, suffix, region string) {
 	// tolerates any stack never having been (successfully) deployed, and empties the
 	// bucket -- all object versions and delete markers -- before destroying the owning
 	// stack A. Unconditional (and a harmless no-op for suites whose bucket already
-	// deletes non-empty on destroy, e.g. CDK's autoDeleteObjects or terraform/aws's
-	// force_destroy = true), because terraform/awscc's awscc_s3_bucket has no such
-	// equivalent and needs it.
+	// deletes non-empty on destroy, e.g. CDK's autoDeleteObjects or terraform/aws's and
+	// terraform/cfncompat's force_destroy = true), because terraform/awscc's
+	// awscc_s3_bucket has no such equivalent and needs it.
 	defer test_structure.RunTestStage(t, "cleanup", func() {
 		t.Logf("[cleanup] emptying bucket %s before destroying owning stack a", bucket)
 		if err := harnessaws.EmptyBucket(t, region, bucket); err != nil {
@@ -135,8 +152,9 @@ func runHarness(t *testing.T, suite Suite, suffix, region string) {
 		waitForTargetLive(t, region, bucket, ownerUpload{owner: "b", queueURL: queueURL["b"]})
 	})
 	test_structure.RunTestStage(t, "validate_b", func() {
-		// Expected RED for the terraform suites: see TestTerraformAwscc's and
-		// TestTerraformAws's doc comments.
+		// Expected RED for terraform/awscc and terraform/aws (see TestTerraformAwscc's
+		// and TestTerraformAws's doc comments); expected GREEN for terraform/cfncompat
+		// (see TestTerraformCfncompat's doc comment) and for the cdk suite.
 		assertNotificationTargets(t, region, bucket, []string{lambdaArn["a"], lambdaArn["b"]}, nil)
 		assertDelivery(t, region, bucket, 2, []ownerUpload{
 			{owner: "a", queueURL: queueURL["a"]},

@@ -1,8 +1,8 @@
 // Package integ contains the s3-notifications-harness terratest (Go) suite:
 // it drives the same deploy/validate flow (see CONTRACT.md) against both the
 // awscdk/ and terraform/ suites via the Suite interface below, so
-// harness_test.go's TestAwsCdk, TestTerraformAwscc, and TestTerraformAws share one
-// implementation.
+// harness_test.go's TestAwsCdk, TestTerraformAwscc, TestTerraformAws, and
+// TestTerraformCfncompat share one implementation.
 package integ
 
 import (
@@ -20,8 +20,8 @@ import (
 )
 
 // Suite drives one full deploy/plan/outputs/destroy lifecycle for a single
-// stack letter ("a", "b", or "c") for one of the two tool suites, so
-// harness_test.go can run the identical CONTRACT.md flow against both.
+// stack letter ("a", "b", or "c") for one of the tool suites, so
+// harness_test.go can run the identical CONTRACT.md flow against all of them.
 type Suite interface {
 	// Name identifies the suite for logging (e.g. "cdk", "terraform").
 	Name() string
@@ -149,8 +149,9 @@ func (s *cdkSuite) Destroy(t *testing.T, x string) {
 // ---------------------------------------------------------------------------
 
 // tfSuite drives terraform/<provider>/stack-<x> via terratest's terraform
-// module, where provider is "awscc" (hashicorp/awscc + hashicorp/aws) or
-// "aws" (hashicorp/aws only) -- see CONTRACT.md and terraform/README.md. Each
+// module, where provider is "awscc" (hashicorp/awscc + hashicorp/aws), "aws"
+// (hashicorp/aws only), or "cfncompat" (hashicorp/aws + hashicorp/archive +
+// cdktn-io/cfncompat) -- see CONTRACT.md and terraform/README.md. Each
 // stack's *terraform.Options (and the temp dir terratest copies its module
 // into) is memoized on first use so later stages -- Plan, Outputs, Destroy,
 // or a redeploy -- reuse the same working directory and state, instead of
@@ -158,14 +159,14 @@ func (s *cdkSuite) Destroy(t *testing.T, x string) {
 type tfSuite struct {
 	suffix   string
 	region   string
-	provider string // "awscc" or "aws"
+	provider string // "awscc", "aws", or "cfncompat"
 
 	mu      sync.Mutex
 	options map[string]*terraform.Options // stack letter -> options, memoized on first use
 }
 
 // NewTerraformSuite drives terraform/<provider>/stack-{a,b,c}, provider being
-// "awscc" or "aws" (CONTRACT.md's two sibling scenarios).
+// "awscc", "aws", or "cfncompat" (CONTRACT.md's three sibling terraform scenarios).
 func NewTerraformSuite(suffix, region, provider string) *tfSuite {
 	return &tfSuite{suffix: suffix, region: region, provider: provider, options: map[string]*terraform.Options{}}
 }
@@ -183,8 +184,10 @@ func terraformBinary() string {
 // terraform/<provider>/stack-<x> (plus terraform/<provider>/modules and
 // lambda/, via the whole-repo copy test_structure.CopyTerraformFolderToTemp
 // does -- it preserves the full repo's directory structure under the temp
-// dir, so the module's "${path.module}/../../../../lambda/index.js" and the
-// stack's "../modules/notification-target" source both resolve unchanged)
+// dir, so the module's "${path.module}/../../../../lambda/index.js" (or, for
+// cfncompat's handler, "lambda/notifications-handler/index.py") and the
+// stack's "../modules/notification-target" source (or, for cfncompat,
+// "../../aws/modules/notification-target") both resolve unchanged)
 // into a temp working dir the first time it's called for that stack.
 func (s *tfSuite) optionsFor(t *testing.T, x string) *terraform.Options {
 	s.mu.Lock()

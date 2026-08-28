@@ -9,7 +9,7 @@ Region: `us-east-1`. Credentials: ambient env (`aws-vault exec --no-session tcon
   - bucket name = `s3n-harness-<suffix>`
 
 ## Per-stack naming (X in a|b|c, SUFFIX = suffix)
-- Stack name: CDK `S3nHarness<A|B|C>-<suffix>`; Terraform root modules `terraform/<provider>/stack-a`, `stack-b`, `stack-c` for each of the two sibling scenarios, `provider` in `awscc` (`hashicorp/awscc` + `hashicorp/aws`), `aws` (`hashicorp/aws` only) — see `terraform/README.md` (each root has its own local state in its working dir, terratest copies each into a temp dir).
+- Stack name: CDK `S3nHarness<A|B|C>-<suffix>`; Terraform root modules `terraform/<provider>/stack-a`, `stack-b`, `stack-c` for each of the three sibling scenarios, `provider` in `awscc` (`hashicorp/awscc` + `hashicorp/aws`), `aws` (`hashicorp/aws` only), `cfncompat` (`hashicorp/aws` + `hashicorp/archive` + `cdktn-io/cfncompat`) — see `terraform/README.md` (each root has its own local state in its working dir, terratest copies each into a temp dir).
 - Lambda function name: `s3n-harness-<suffix>-<x>` (env `RESULTS_QUEUE_URL`, `STACK_NAME=<x>`), runtime `nodejs22.x`, handler `index.handler`, source `lambda/index.js` (single file, CommonJS, no deps beyond runtime SDK).
 - Lambda role: allows `sqs:SendMessage` on its results queue + `AWSLambdaBasicExecutionRole`.
 - Lambda permission: principal `s3.amazonaws.com`, source arn = bucket arn, source account = current account.
@@ -34,13 +34,15 @@ the canonical snake_case keys before returning them to the shared assertion help
 - CDK: `cdk.json` sets `"@aws-cdk/aws-s3:keepNotificationInImportedBucket": true` (required so the owning stack also merges instead of overwriting).
 - Terraform (awscc): `awscc_s3_bucket` with inline `notification_configuration.lambda_configurations`.
 - Terraform (aws): `aws_s3_bucket` (`force_destroy = true`) + its own `aws_s3_bucket_notification`, the same resource stack-b/c use.
+- Terraform (cfncompat): `aws_s3_bucket` (`force_destroy = true`) only -- no `aws_s3_bucket_notification` anywhere in this scenario. Stack A's own target, like stack-b/c's, is attached purely via `modules/bucket-notifications`' `cfncompat_custom_resource` (see docs/OPTIONS.md Option A).
 
 ## Stack B / C specifics
 - CDK: `s3.Bucket.fromBucketName(this, 'Bucket', bucketName)` + `addEventNotification(...)`.
-- Terraform: `data "aws_s3_bucket"` + `aws_s3_bucket_notification` (hashicorp/aws) with one `lambda_function` block; the target module is `awscc_*` for lambda/iam/sqs/permission in the awscc scenario, `aws_*` (+ `data "archive_file"` for the lambda zip) in the aws scenario.
+- Terraform (awscc/aws): `data "aws_s3_bucket"` + `aws_s3_bucket_notification` (hashicorp/aws) with one `lambda_function` block; the target module is `awscc_*` for lambda/iam/sqs/permission in the awscc scenario, `aws_*` (+ `data "archive_file"` for the lambda zip) in the aws scenario.
+- Terraform (cfncompat): `data "aws_s3_bucket"` + a per-stack `cfncompat_custom_resource` (`modules/bucket-notifications`) driving AWS CDK's own bucket-notifications Lambda handler in its "unmanaged" (merge) mode -- no `aws_s3_bucket_notification` at all; the target module is `terraform/aws/modules/notification-target`, reused by relative path.
 
 ## Provider/tool versions
-- terraform 1.15.9 (mise), hashicorp/awscc `~> 1.98`, hashicorp/aws `~> 6.0`, hashicorp/archive (unpinned, used for the lambda zip in the `terraform/aws` scenario) (pin whatever latest resolves, commit lock files are ignored, use `required_providers`).
+- terraform 1.15.9 (mise), hashicorp/awscc `~> 1.98`, hashicorp/aws `~> 6.0`, hashicorp/archive (unpinned, used for the lambda zip in the `terraform/aws` and `terraform/cfncompat` scenarios), cdktn-io/cfncompat `~> 0.2` (used only in `terraform/cfncompat`, see `docs/OPTIONS.md`) (pin whatever latest resolves, commit lock files are ignored, use `required_providers`).
 - aws-cdk-lib `2.267.0`, aws-cdk `2.1139.0`, node 24, TypeScript app via `npx tsx bin/app.ts` (`cdk.json` app: `npx tsx bin/app.ts`).
 
 ## integ/ (Go, terratest) test flow — same for both suites, parameterised by a `Suite` interface
@@ -53,7 +55,7 @@ destroy B     → assert config ⊇ {a,c}, ∌ b
 destroy C, A  (cleanup, deferred; always runs; empties bucket first)
 ```
 Assertion helper: `GetBucketNotificationConfiguration` → set of LambdaFunctionArn present. Stage skipping via `test_structure.RunTestStage` + `SKIP_*` env.
-Expected: `TestAwsCdk` GREEN, `TestTerraformAwscc` RED at "deploy B → config ⊇ {a,b}" (and the B plan output logged shows it replacing A's target); `TestTerraformAws` runs the same flow against the aws-only scenario (outcome is what the comparison is meant to answer — see harness_test.go's TestTerraformAws doc comment). The test must log the terraform plan for B and C before applying.
+Expected: `TestAwsCdk` GREEN, `TestTerraformAwscc` RED at "deploy B → config ⊇ {a,b}" (and the B plan output logged shows it replacing A's target); `TestTerraformAws` runs the same flow against the aws-only scenario (outcome is what the comparison is meant to answer — see harness_test.go's TestTerraformAws doc comment); `TestTerraformCfncompat` GREEN, since every stack's `cfncompat_custom_resource` merges its own entry into the bucket's existing notification configuration instead of overwriting it (see docs/OPTIONS.md Option A and harness_test.go's TestTerraformCfncompat doc comment). The test must log the terraform plan for B and C before applying.
 
 ## Timing caveats
 - S3 applies a new notification configuration eventually — AWS documents "about five minutes". `GetBucketNotificationConfiguration` is read-after-write consistent and is the assertion that proves merge semantics; delivery is only asserted after `waitForTargetLive` (≤6 min of warm-up probes) for the target the stage just deployed. A delivery-only failure is a harness timeout, not a merge failure.
