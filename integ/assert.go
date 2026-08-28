@@ -26,8 +26,9 @@ type resultMessage struct {
 // every ARN in unwantArns is absent.
 //
 // Deliberately non-fatal (testify's assert, not require): a failure here -- the expected
-// outcome for TestTerraform starting at "deploy B" -- must not stop later stages from
-// running and logging further evidence.
+// outcome for TestTerraformAwscc (and possibly TestTerraformAws -- see its doc comment)
+// starting at "deploy B" -- must not stop later stages from running and logging further
+// evidence.
 func assertNotificationTargets(t *testing.T, region, bucket string, wantArns, unwantArns []string) {
 	t.Helper()
 

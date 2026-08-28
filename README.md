@@ -6,9 +6,10 @@ problem across independently-deployed stacks, side by side:
 | Suite | Tooling | Expected |
 |---|---|---|
 | `awscdk/` | AWS CDK v2 L2 constructs (`Bucket.addEventNotification` → `BucketNotifications` custom resource) | GREEN |
-| `terraform/` | Terraform 1.15 + `hashicorp/awscc` (bucket, lambda, sqs, iam) + `hashicorp/aws` `aws_s3_bucket_notification` for cross-stack attach | RED |
+| `terraform/awscc/` | Terraform 1.15 + `hashicorp/awscc` (bucket, lambda, sqs, iam) + `hashicorp/aws` `aws_s3_bucket_notification` for cross-stack attach | RED |
+| `terraform/aws/` | Terraform 1.15 + `hashicorp/aws` only — stack-a's own target also via `aws_s3_bucket_notification` | outcome to be determined |
 
-Three stacks per suite:
+Three stacks per suite (three suites total):
 
 - **Stack A** — owns the bucket, adds notification target `a` (lambda, prefix `a/`)
 - **Stack B** — references A's bucket by name, adds target `b` (prefix `b/`)

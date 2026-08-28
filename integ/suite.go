@@ -1,7 +1,8 @@
 // Package integ contains the s3-notifications-harness terratest (Go) suite:
 // it drives the same deploy/validate flow (see CONTRACT.md) against both the
 // awscdk/ and terraform/ suites via the Suite interface below, so
-// harness_test.go's TestAwsCdk and TestTerraform share one implementation.
+// harness_test.go's TestAwsCdk, TestTerraformAwscc, and TestTerraformAws share one
+// implementation.
 package integ
 
 import (
@@ -147,24 +148,29 @@ func (s *cdkSuite) Destroy(t *testing.T, x string) {
 // tfSuite
 // ---------------------------------------------------------------------------
 
-// tfSuite drives terraform/stack-<x> via terratest's terraform module. Each
+// tfSuite drives terraform/<provider>/stack-<x> via terratest's terraform
+// module, where provider is "awscc" (hashicorp/awscc + hashicorp/aws) or
+// "aws" (hashicorp/aws only) -- see CONTRACT.md and terraform/README.md. Each
 // stack's *terraform.Options (and the temp dir terratest copies its module
 // into) is memoized on first use so later stages -- Plan, Outputs, Destroy,
 // or a redeploy -- reuse the same working directory and state, instead of
 // terratest handing back a fresh, empty-state copy every call.
 type tfSuite struct {
-	suffix string
-	region string
+	suffix   string
+	region   string
+	provider string // "awscc" or "aws"
 
 	mu      sync.Mutex
 	options map[string]*terraform.Options // stack letter -> options, memoized on first use
 }
 
-func NewTerraformSuite(suffix, region string) *tfSuite {
-	return &tfSuite{suffix: suffix, region: region, options: map[string]*terraform.Options{}}
+// NewTerraformSuite drives terraform/<provider>/stack-{a,b,c}, provider being
+// "awscc" or "aws" (CONTRACT.md's two sibling scenarios).
+func NewTerraformSuite(suffix, region, provider string) *tfSuite {
+	return &tfSuite{suffix: suffix, region: region, provider: provider, options: map[string]*terraform.Options{}}
 }
 
-func (s *tfSuite) Name() string { return "terraform" }
+func (s *tfSuite) Name() string { return "terraform-" + s.provider }
 
 func terraformBinary() string {
 	if bin := os.Getenv("TERRAFORM_BINARY"); bin != "" {
@@ -174,9 +180,12 @@ func terraformBinary() string {
 }
 
 // optionsFor returns the memoized *terraform.Options for stack x, copying
-// terraform/stack-<x> (plus terraform/modules and lambda/, via the whole-repo
-// copy test_structure.CopyTerraformFolderToTemp does) into a temp working dir
-// the first time it's called for that stack.
+// terraform/<provider>/stack-<x> (plus terraform/<provider>/modules and
+// lambda/, via the whole-repo copy test_structure.CopyTerraformFolderToTemp
+// does -- it preserves the full repo's directory structure under the temp
+// dir, so the module's "${path.module}/../../../../lambda/index.js" and the
+// stack's "../modules/notification-target" source both resolve unchanged)
+// into a temp working dir the first time it's called for that stack.
 func (s *tfSuite) optionsFor(t *testing.T, x string) *terraform.Options {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -185,8 +194,9 @@ func (s *tfSuite) optionsFor(t *testing.T, x string) *terraform.Options {
 		return opt
 	}
 
-	workingDir := test_structure.CopyTerraformFolderToTemp(t, "..", "terraform/stack-"+x)
-	t.Logf("[terraform] stack %s working dir: %s", x, workingDir)
+	stackDir := fmt.Sprintf("terraform/%s/stack-%s", s.provider, x)
+	workingDir := test_structure.CopyTerraformFolderToTemp(t, "..", stackDir)
+	t.Logf("[terraform-%s] stack %s working dir: %s", s.provider, x, workingDir)
 
 	opt := terraform.WithDefaultRetryableErrors(t, &terraform.Options{
 		TerraformDir:    workingDir,
@@ -223,15 +233,15 @@ func (s *tfSuite) Destroy(t *testing.T, x string) {
 	opt, ok := s.options[x]
 	s.mu.Unlock()
 	if !ok {
-		t.Logf("[terraform] stack %s was never deployed in this run, nothing to destroy", x)
+		t.Logf("[terraform-%s] stack %s was never deployed in this run, nothing to destroy", s.provider, x)
 		return
 	}
 
 	out, err := terraform.DestroyE(t, opt)
-	t.Logf("terraform destroy stack %s:\n%s", x, out)
+	t.Logf("terraform-%s destroy stack %s:\n%s", s.provider, x, out)
 	if err != nil {
 		// Cleanup must tolerate the stack not existing / apply having failed partway.
-		t.Logf("terraform destroy stack %s returned an error (tolerated during cleanup): %v", x, err)
+		t.Logf("terraform-%s destroy stack %s returned an error (tolerated during cleanup): %v", s.provider, x, err)
 	}
 }
 

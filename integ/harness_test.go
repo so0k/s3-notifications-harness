@@ -33,21 +33,40 @@ func TestAwsCdk(t *testing.T) {
 	runHarness(t, NewCDKSuite(suffix), suffix, region)
 }
 
-// TestTerraform runs the identical flow against terraform/. Expected: RED starting at
+// TestTerraformAwscc runs the identical flow against terraform/awscc/, where stack-a
+// owns the bucket via an awscc_s3_bucket with an inline notification_configuration and
+// stack-b/c cross-attach via aws_s3_bucket_notification. Expected: RED starting at
 // "deploy B -> assert config includes {a,b}" -- stack B's aws_s3_bucket_notification
 // resource is authoritative over the bucket's whole notification config and replaces
-// stack A's target instead of merging with it. validate_b (and later validate stages)
-// failing is that expected RED, not a bug in this test: validations use testify's
-// non-fatal assert precisely so every later stage still runs and logs more evidence
-// (including each RED stage's terraform plan) once that happens.
-func TestTerraform(t *testing.T) {
+// stack A's inline target instead of merging with it. validate_b (and later validate
+// stages) failing is that expected RED, not a bug in this test: validations use
+// testify's non-fatal assert precisely so every later stage still runs and logs more
+// evidence (including each RED stage's terraform plan) once that happens.
+func TestTerraformAwscc(t *testing.T) {
 	suffix := strings.ToLower(random.UniqueId())
 	region := awsRegion()
-	t.Logf("suite=terraform suffix=%s region=%s", suffix, region)
-	runHarness(t, NewTerraformSuite(suffix, region), suffix, region)
+	t.Logf("suite=terraform-awscc suffix=%s region=%s", suffix, region)
+	runHarness(t, NewTerraformSuite(suffix, region, "awscc"), suffix, region)
 }
 
-// runHarness drives CONTRACT.md's integ/ flow identically for both suites:
+// TestTerraformAws runs the identical flow against terraform/aws/, where stack-a also
+// owns its target through an aws_s3_bucket_notification resource (the same resource
+// type stack-b/c use to cross-attach), rather than through awscc's inline config. This
+// isolates whether the RED behavior TestTerraformAwscc documents comes from mixing
+// awscc_s3_bucket's inline config with aws_s3_bucket_notification, or from
+// aws_s3_bucket_notification itself always being authoritative regardless of what owns
+// the bucket -- see terraform/README.md. Whether deploy B's *first* plan shows stack
+// A's existing target being dropped (vs. a refresh-driven diff only surfacing later, at
+// the stack-A re-plan after B and C) is exactly what running this side by side with
+// TestTerraformAwscc must answer; do not assume either outcome here.
+func TestTerraformAws(t *testing.T) {
+	suffix := strings.ToLower(random.UniqueId())
+	region := awsRegion()
+	t.Logf("suite=terraform-aws suffix=%s region=%s", suffix, region)
+	runHarness(t, NewTerraformSuite(suffix, region, "aws"), suffix, region)
+}
+
+// runHarness drives CONTRACT.md's integ/ flow identically for all three suites:
 //
 //	deploy A      -> assert config includes {a};       upload a/1          -> queue a receives
 //	deploy B      -> assert config includes {a,b};     upload a/2,b/2      -> queues a,b receive
@@ -66,8 +85,10 @@ func runHarness(t *testing.T, suite Suite, suffix, region string) {
 	// through, since that unwinds via runtime.Goexit through this same goroutine),
 	// tolerates any stack never having been (successfully) deployed, and empties the
 	// bucket -- all object versions and delete markers -- before destroying the owning
-	// stack A, since the Terraform suite's awscc_s3_bucket has no auto-delete-on-destroy
-	// equivalent.
+	// stack A. Unconditional (and a harmless no-op for suites whose bucket already
+	// deletes non-empty on destroy, e.g. CDK's autoDeleteObjects or terraform/aws's
+	// force_destroy = true), because terraform/awscc's awscc_s3_bucket has no such
+	// equivalent and needs it.
 	defer test_structure.RunTestStage(t, "cleanup", func() {
 		t.Logf("[cleanup] emptying bucket %s before destroying owning stack a", bucket)
 		if err := harnessaws.EmptyBucket(t, region, bucket); err != nil {
@@ -114,7 +135,8 @@ func runHarness(t *testing.T, suite Suite, suffix, region string) {
 		waitForTargetLive(t, region, bucket, ownerUpload{owner: "b", queueURL: queueURL["b"]})
 	})
 	test_structure.RunTestStage(t, "validate_b", func() {
-		// Expected RED for TestTerraform: see runHarness's doc comment.
+		// Expected RED for the terraform suites: see TestTerraformAwscc's and
+		// TestTerraformAws's doc comments.
 		assertNotificationTargets(t, region, bucket, []string{lambdaArn["a"], lambdaArn["b"]}, nil)
 		assertDelivery(t, region, bucket, 2, []ownerUpload{
 			{owner: "a", queueURL: queueURL["a"]},

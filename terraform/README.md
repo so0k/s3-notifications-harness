@@ -1,54 +1,37 @@
 # terraform/
 
-Three independent root modules that reproduce the "single authoritative S3 bucket notification
-configuration" problem: `stack-a` owns the bucket and its target; `stack-b` and `stack-c`
-reference the bucket by name (deterministic, never via remote state) and each attach their own
-target with `aws_s3_bucket_notification`, which — unlike CDK's `addEventNotification` — replaces
-the bucket's entire notification configuration on every apply instead of merging with it.
+Two sibling scenarios, both reproducing the "single authoritative S3 bucket notification
+configuration" problem across independently-deployed root modules, but wired with different
+providers so the RED behavior can be attributed to a specific resource rather than to Terraform
+in general:
 
-All three roots share `modules/notification-target` (results SQS queue, lambda role, lambda
-function, and the `s3.amazonaws.com` invoke permission).
+| Scenario | Provider(s) | Bucket owned by (stack-a) | Cross-stack attach (stack-b/c) |
+|---|---|---|---|
+| [`awscc/`](awscc/README.md) | `hashicorp/awscc` (+ `hashicorp/aws` for the caller-identity data source) | `awscc_s3_bucket` with inline `notification_configuration` | `aws_s3_bucket_notification` |
+| [`aws/`](aws/README.md) | `hashicorp/aws` only | `aws_s3_bucket` + a separate `aws_s3_bucket_notification` | `aws_s3_bucket_notification` |
 
-## Apply order (matches the `integ/` terratest flow)
+In `awscc/`, stack-a's target is inline on the bucket resource itself; in `aws/`, stack-a's
+target uses the very same `aws_s3_bucket_notification` resource that stack-b and stack-c use.
+That difference is deliberate: it isolates whether the RED behavior comes from mixing
+`awscc_s3_bucket`'s inline config with `aws_s3_bucket_notification`, or from
+`aws_s3_bucket_notification` itself always being authoritative regardless of what owns the
+bucket.
 
-`--no-session` is required: the `awscc_*` IAM resources go through Cloud Control, which
-rejects `GetSessionToken` credentials.
+Each scenario has three independent root modules (`stack-a`, `stack-b`, `stack-c`) sharing a
+`modules/notification-target` module (results SQS queue, lambda role, lambda function, and the
+`s3.amazonaws.com` invoke permission) — see each scenario's own README for apply order and
+verify-without-credentials steps. Naming, inputs, and outputs are identical across both
+scenarios and across the `awscdk/` suite; see [`../CONTRACT.md`](../CONTRACT.md).
 
-```sh
-export AWSV="aws-vault exec --no-session tcons-vincent --"
-
-cd terraform
-$AWSV mise x -- terraform -chdir=stack-a init && $AWSV mise x -- terraform -chdir=stack-a apply -var suffix=k3m9x1
-$AWSV mise x -- terraform -chdir=stack-b init && $AWSV mise x -- terraform -chdir=stack-b apply -var suffix=k3m9x1
-$AWSV mise x -- terraform -chdir=stack-c init && $AWSV mise x -- terraform -chdir=stack-c apply -var suffix=k3m9x1
-
-# re-apply A: merges nothing new, but demonstrates A's inline config is untouched by B/C
-$AWSV mise x -- terraform -chdir=stack-a apply -var suffix=k3m9x1
-
-# expected RED point: `terraform plan` for stack-b (and stack-c) shows
-# aws_s3_bucket_notification replacing the bucket's whole notification_configuration,
-# dropping stack-a's (and, for C, stack-b's) lambda target instead of merging with it.
-```
-
-Destroy in reverse (empty the bucket first — `stack-a` owns it and does not enable
-`force_destroy`; the terratest harness does this via the AWS SDK before destroying):
-
-```sh
-$AWSV mise x -- terraform -chdir=stack-c destroy -var suffix=k3m9x1
-$AWSV mise x -- terraform -chdir=stack-b destroy -var suffix=k3m9x1
-$AWSV mise x -- terraform -chdir=stack-a destroy -var suffix=k3m9x1
-```
-
-`suffix` must match across all three roots and the awscdk suite for a given test run; `region`
-defaults to `us-east-1` on every provider and can be overridden with `-var region=...`.
-See `../CONTRACT.md` for the full cross-suite contract.
-
-## Verify without AWS credentials
+## Verify without AWS credentials (both scenarios)
 
 ```sh
 cd terraform
-for x in a b c; do
-  mise x -- terraform -chdir=stack-$x init -backend=false && mise x -- terraform -chdir=stack-$x validate
+for scenario in awscc aws; do
+  for x in a b c; do
+    mise x -- terraform -chdir=$scenario/stack-$x init -backend=false && \
+      mise x -- terraform -chdir=$scenario/stack-$x validate
+  done
 done
 mise x -- terraform fmt -check -recursive
 ```

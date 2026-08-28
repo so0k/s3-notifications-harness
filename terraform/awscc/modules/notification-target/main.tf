@@ -48,7 +48,7 @@ resource "awscc_lambda_function" "handler" {
   runtime       = "nodejs22.x"
 
   code = {
-    zip_file = file("${path.module}/../../../lambda/index.js")
+    zip_file = file("${path.module}/../../../../lambda/index.js")
   }
 
   environment = {

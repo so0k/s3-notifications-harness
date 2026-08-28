@@ -1,13 +1,14 @@
 # integ
 
-Terratest (Go) suite that drives the CONTRACT.md deploy/validate flow against both
-`../awscdk/` and `../terraform/`, side by side, through one shared `Suite` interface
-(`suite.go`): `cdkSuite` shells out to `npx cdk` in `../awscdk`; `tfSuite` copies
-`../terraform/stack-<x>` (plus `../terraform/modules` and `../lambda`, via the whole-repo
-copy `test_structure.CopyTerraformFolderToTemp` does) into a temp dir and drives it with
-terratest's `terraform` module.
+Terratest (Go) suite that drives the CONTRACT.md deploy/validate flow against
+`../awscdk/` and both terraform scenarios (`../terraform/awscc/`, `../terraform/aws/`),
+side by side, through one shared `Suite` interface (`suite.go`): `cdkSuite` shells out to
+`npx cdk` in `../awscdk`; `tfSuite` copies `../terraform/<provider>/stack-<x>` (plus
+`../terraform/<provider>/modules` and `../lambda`, via the whole-repo copy
+`test_structure.CopyTerraformFolderToTemp` does) into a temp dir and drives it with
+terratest's `terraform` module, where `provider` is `"awscc"` or `"aws"`.
 
-`harness_test.go` runs the identical flow for both:
+`harness_test.go` runs the identical flow for all three:
 
 ```
 deploy A      -> assert config includes {a};       upload a/1         -> queue a receives
@@ -18,15 +19,21 @@ destroy B     -> assert config includes {a,c}, excludes b
 destroy C, A  (cleanup, deferred; always runs; empties the bucket first)
 ```
 
-**Expected:** `TestAwsCdk` GREEN. `TestTerraform` RED starting at "deploy B -> assert
+**Expected:** `TestAwsCdk` GREEN. `TestTerraformAwscc` RED starting at "deploy B -> assert
 config includes {a,b}" -- stack B's `aws_s3_bucket_notification` resource is authoritative
-over the bucket's whole notification config, so it replaces stack A's target rather than
-merging with it (the `awscdk` suite's `Bucket.addEventNotification` merges correctly, via
-the `BucketNotifications` custom resource, hence GREEN there). That RED is the expected,
-documented outcome, not a bug in the test -- deploy calls are fatal (`require`), but every
-validation is non-fatal (`assert`), so every later stage still runs and logs more evidence
-(including each of stage B and C's terraform plan, showing the replacement) once it starts
-failing.
+over the bucket's whole notification config, so it replaces stack A's inline
+`awscc_s3_bucket` target rather than merging with it (the `awscdk` suite's
+`Bucket.addEventNotification` merges correctly, via the `BucketNotifications` custom
+resource, hence GREEN there). That RED is the expected, documented outcome, not a bug in
+the test -- deploy calls are fatal (`require`), but every validation is non-fatal
+(`assert`), so every later stage still runs and logs more evidence (including each of
+stage B and C's terraform plan, showing the replacement) once it starts failing.
+
+`TestTerraformAws` runs the same flow against a scenario where stack-a's target also goes
+through `aws_s3_bucket_notification` (the same resource type stack-b/c use), instead of
+awscc's inline config -- see `../terraform/README.md` and `TestTerraformAws`'s doc comment
+in `harness_test.go` for exactly what question comparing it against `TestTerraformAwscc`
+is meant to answer.
 
 ## Prereqs
 
@@ -38,16 +45,18 @@ cd awscdk && npm install && cd ..  # aws-cdk-lib / aws-cdk CLI for the cdk suite
 ## Running
 
 ```sh
-aws-vault exec --no-session tcons-vincent -- make test      # both suites
-aws-vault exec --no-session tcons-vincent -- make test-cdk  # just TestAwsCdk
-aws-vault exec --no-session tcons-vincent -- make test-tf   # just TestTerraform
+aws-vault exec --no-session tcons-vincent -- make test        # all three suites
+aws-vault exec --no-session tcons-vincent -- make test-cdk    # just TestAwsCdk
+aws-vault exec --no-session tcons-vincent -- make test-awscc  # just TestTerraformAwscc
+aws-vault exec --no-session tcons-vincent -- make test-aws    # just TestTerraformAws
 ```
 
 Or drive `go test` directly:
 
 ```sh
 aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestAwsCdk$' ./...
-aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestTerraform$' ./...
+aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestTerraformAwscc$' ./...
+aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestTerraformAws$' ./...
 ```
 
 Region defaults to `us-east-1` (`AWS_REGION`, set by `.mise.toml`); to point at a
@@ -68,7 +77,7 @@ for inspection after a run.
 ```
 integ/
   suite.go            # Suite interface + cdkSuite / tfSuite implementations
-  harness_test.go      # TestAwsCdk, TestTerraform -- the shared CONTRACT.md flow
+  harness_test.go      # TestAwsCdk, TestTerraformAwscc, TestTerraformAws -- the shared CONTRACT.md flow
   assert.go            # assertNotificationTargets, assertDelivery, assertNoCrossDelivery
   aws/
     s3.go              # GetS3BucketNotificationE, UploadS3File, EmptyBucket (all object versions)
