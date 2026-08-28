@@ -1,8 +1,8 @@
 // Package integ contains the s3-notifications-harness terratest (Go) suite:
 // it drives the same deploy/validate flow (see CONTRACT.md) against the awscdk/
-// suite and each terraform/ scenario via the Suite interface below, so
-// harness_test.go's TestAwsCdk, TestTerraformAwscc, TestTerraformAws, and
-// TestTerraformCfncompat share one implementation.
+// suite, each terraform/ scenario, and the cdktn/ app via the Suite interface
+// below, so harness_test.go's TestAwsCdk, TestTerraformAwscc, TestTerraformAws,
+// TestTerraformCfncompat, and TestCdktn share one implementation.
 package integ
 
 import (
@@ -245,6 +245,119 @@ func (s *tfSuite) Destroy(t *testing.T, x string) {
 	if err != nil {
 		// Cleanup must tolerate the stack not existing / apply having failed partway.
 		t.Logf("terraform-%s destroy stack %s returned an error (tolerated during cleanup): %v", s.provider, x, err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// cdktnSuite
+// ---------------------------------------------------------------------------
+
+// cdktnSuite drives the cdktn/ TypeScript app (Option B, docs/OPTIONS.md) via the
+// `cdktn` CLI (through `npx`), run from the cdktn/ directory (relative to integ/,
+// where `go test` runs) so the app's `../lambda` handler paths resolve. Unlike
+// cdkSuite/tfSuite, every stage needs SUFFIX in the environment: the app reads it
+// directly (see cdktn/main.ts) rather than taking it as a CLI var/context flag.
+type cdktnSuite struct {
+	suffix string
+}
+
+func NewCdktnSuite(suffix string) *cdktnSuite {
+	return &cdktnSuite{suffix: suffix}
+}
+
+func (s *cdktnSuite) Name() string { return "cdktn" }
+
+const cdktnWorkDir = "../cdktn"
+
+// stackName returns e.g. "s3n-harness-a-<suffix>" for x == "a" -- the TerraformStack
+// id cdktn/main.ts constructs each stack with, and so also the stack's cdktf.out
+// directory name and its key in an --outputs-file's JSON.
+func (s *cdktnSuite) stackName(x string) string {
+	return fmt.Sprintf("s3n-harness-%s-%s", x, s.suffix)
+}
+
+func (s *cdktnSuite) env() map[string]string {
+	return map[string]string{"SUFFIX": s.suffix}
+}
+
+// outputsFile is a deterministic (not randomly-named) path so a later stage -- or a
+// later `go test` invocation with SKIP_deploy_<x>=true against the same suffix -- can
+// still find the outputs from a prior Deploy.
+func (s *cdktnSuite) outputsFile(x string) string {
+	return filepath.Join(os.TempDir(), fmt.Sprintf("s3n-harness-%s-cdktn-%s.outputs.json", s.suffix, x))
+}
+
+func (s *cdktnSuite) Deploy(t *testing.T, x string) {
+	name := s.stackName(x)
+	outFile := s.outputsFile(x)
+	_ = os.Remove(outFile) // start clean so a failed deploy can't leave a stale outputs file behind
+
+	shell.RunCommandAndGetOutput(t, shell.Command{
+		Command:    "npx",
+		Args:       []string{"cdktn", "deploy", name, "--auto-approve", "--outputs-file", outFile},
+		WorkingDir: cdktnWorkDir,
+		Env:        s.env(),
+	})
+}
+
+func (s *cdktnSuite) Plan(t *testing.T, x string) string {
+	name := s.stackName(x)
+	out, err := shell.RunCommandAndGetOutputE(t, shell.Command{
+		Command:    "npx",
+		Args:       []string{"cdktn", "diff", name},
+		WorkingDir: cdktnWorkDir,
+		Env:        s.env(),
+	})
+	if err != nil {
+		// `cdktn diff` exits non-zero whenever there are pending changes to apply --
+		// that's the normal case here (first deploy of a stack), not a Plan failure.
+		t.Logf("cdktn diff %s exited non-zero (expected when there are pending changes): %v", name, err)
+	}
+	return out
+}
+
+// Outputs reads the outputs file Deploy(x) wrote (cdktn/main.ts's TerraformOutput ids
+// already are the canonical snake_case keys -- bucket_name, lambda_arn, queue_url,
+// owner -- so, unlike cdkSuite, no key translation is needed). If the file isn't there
+// (e.g. Outputs is called in a run that skipped deploy_<x> via SKIP_deploy_<x>=true,
+// reusing state from an earlier run), falls back to asking cdktn directly.
+func (s *cdktnSuite) Outputs(t *testing.T, x string) map[string]string {
+	name := s.stackName(x)
+	outFile := s.outputsFile(x)
+
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Logf("[cdktn] outputs file %s not found (%v); falling back to `cdktn output --outputs-file`", outFile, err)
+		shell.RunCommandAndGetOutput(t, shell.Command{
+			Command:    "npx",
+			Args:       []string{"cdktn", "output", name, "--outputs-file", outFile},
+			WorkingDir: cdktnWorkDir,
+			Env:        s.env(),
+		})
+		data, err = os.ReadFile(outFile)
+		require.NoError(t, err, "reading cdktn outputs file %s after fallback `cdktn output` -- did Deploy(%s) run first?", outFile, x)
+	}
+
+	var all map[string]map[string]string
+	require.NoError(t, json.Unmarshal(data, &all), "parsing cdktn outputs file %s", outFile)
+
+	stackOutputs, ok := all[name]
+	require.True(t, ok, "no outputs recorded for stack %s in %s (keys present: %v)", name, outFile, mapKeys(all))
+	return stackOutputs
+}
+
+func (s *cdktnSuite) Destroy(t *testing.T, x string) {
+	name := s.stackName(x)
+	out, err := shell.RunCommandAndGetOutputE(t, shell.Command{
+		Command:    "npx",
+		Args:       []string{"cdktn", "destroy", name, "--auto-approve"},
+		WorkingDir: cdktnWorkDir,
+		Env:        s.env(),
+	})
+	t.Logf("cdktn destroy %s:\n%s", name, out)
+	if err != nil {
+		// Cleanup must tolerate the stack not existing (e.g. its Deploy never ran).
+		t.Logf("cdktn destroy %s returned an error (tolerated during cleanup): %v", name, err)
 	}
 }
 

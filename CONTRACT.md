@@ -1,4 +1,4 @@
-# Cross-suite contract (awscdk/, terraform/, integ/)
+# Cross-suite contract (awscdk/, terraform/, cdktn/, integ/)
 
 Region: `us-east-1`. Credentials: ambient env (`aws-vault exec --no-session tcons-vincent -- ...`). Never hardcode.
 
@@ -55,7 +55,9 @@ destroy B     → assert config ⊇ {a,c}, ∌ b
 destroy C, A  (cleanup, deferred; always runs; empties bucket first)
 ```
 Assertion helper: `GetBucketNotificationConfiguration` → set of LambdaFunctionArn present. Stage skipping via `test_structure.RunTestStage` + `SKIP_*` env.
-Expected: `TestAwsCdk` GREEN, `TestTerraformAwscc` RED at "deploy B → config ⊇ {a,b}" (and the B plan output logged shows it replacing A's target); `TestTerraformAws` RED at the same point and by the same mechanism, since `aws_s3_bucket_notification` is authoritative over the whole bucket no matter which provider owns stack A's own target (that equivalence is what the aws-vs-awscc comparison establishes — see harness_test.go's TestTerraformAws doc comment); `TestTerraformCfncompat` GREEN, since every stack's `cfncompat_custom_resource` merges its own entry into the bucket's existing notification configuration instead of overwriting it (see docs/OPTIONS.md Option A and harness_test.go's TestTerraformCfncompat doc comment). The test must log the terraform plan for B and C before applying.
+Expected: `TestAwsCdk` GREEN, `TestTerraformAwscc` RED at "deploy B → config ⊇ {a,b}" (and the B plan output logged shows it replacing A's target); `TestTerraformAws` RED at the same point and by the same mechanism, since `aws_s3_bucket_notification` is authoritative over the whole bucket no matter which provider owns stack A's own target (that equivalence is what the aws-vs-awscc comparison establishes — see harness_test.go's TestTerraformAws doc comment); `TestTerraformCfncompat` GREEN, since every stack's `cfncompat_custom_resource` merges its own entry into the bucket's existing notification configuration instead of overwriting it (see docs/OPTIONS.md Option A and harness_test.go's TestTerraformCfncompat doc comment); `TestCdktn` GREEN, for the same reason `TestTerraformCfncompat` is — it's the same cfncompat merge semantics, ported 1:1 from `terraform/cfncompat/` into the `cdktn/` app (Option B, docs/OPTIONS.md) via `@cdktn/provider-cfncompat`'s `CustomResource` construct instead of HCL, driven by `cdktnSuite` shelling out to `npx cdktn` in `../cdktn` (see integ/harness_test.go's TestCdktn doc comment). The test must log the terraform plan for B and C before applying.
+
+Five terratest targets in total: `TestAwsCdk`, `TestTerraformAwscc`, `TestTerraformAws`, `TestTerraformCfncompat`, `TestCdktn` — all driven by the same `runHarness` flow via the `Suite` interface (`integ/suite.go`), one implementation per suite (`cdkSuite`, `tfSuite` parameterised by provider, `cdktnSuite`).
 
 ## Timing caveats
 - S3 applies a new notification configuration eventually — AWS documents "about five minutes". `GetBucketNotificationConfiguration` is read-after-write consistent and is the assertion that proves merge semantics; delivery is only asserted after `waitForTargetLive` (≤6 min of warm-up probes) for the target the stage just deployed. A delivery-only failure is a harness timeout, not a merge failure.

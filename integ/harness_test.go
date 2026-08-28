@@ -85,6 +85,23 @@ func TestTerraformCfncompat(t *testing.T) {
 	runHarness(t, NewTerraformSuite(suffix, region, "cfncompat"), suffix, region)
 }
 
+// TestCdktn runs the identical flow against cdktn/ (Option B, docs/OPTIONS.md): a cdktn
+// TypeScript app porting terraform/cfncompat/ 1:1 -- same three stacks, same
+// cfncompat_custom_resource-driven merge semantics (Managed = "false"), but built with
+// @cdktn/provider-cfncompat's CustomResource construct instead of HCL. This is the fifth
+// terratest target, exercising the product path (binding, provider functions, assets,
+// cdktn CLI) rather than raw HCL -- a regression here, with TestTerraformCfncompat still
+// GREEN, points at the construct/binding/CLI layer rather than the cfncompat protocol
+// engine itself. Expected: fully GREEN, for the same reason TestTerraformCfncompat is --
+// each stack's custom resource merges its own entry into the bucket's existing
+// notification configuration instead of overwriting it.
+func TestCdktn(t *testing.T) {
+	suffix := strings.ToLower(random.UniqueId())
+	region := awsRegion()
+	t.Logf("suite=cdktn suffix=%s region=%s", suffix, region)
+	runHarness(t, NewCdktnSuite(suffix), suffix, region)
+}
+
 // runHarness drives CONTRACT.md's integ/ flow identically for all four suites:
 //
 //	deploy A      -> assert config includes {a};       upload a/1          -> queue a receives

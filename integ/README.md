@@ -1,15 +1,17 @@
 # integ
 
 Terratest (Go) suite that drives the CONTRACT.md deploy/validate flow against
-`../awscdk/` and all three terraform scenarios (`../terraform/awscc/`, `../terraform/aws/`,
-`../terraform/cfncompat/`), side by side, through one shared `Suite` interface
-(`suite.go`): `cdkSuite` shells out to `npx cdk` in `../awscdk`; `tfSuite` copies
-`../terraform/<provider>/stack-<x>` (plus `../terraform/<provider>/modules` and
-`../lambda`, via the whole-repo copy `test_structure.CopyTerraformFolderToTemp` does) into
-a temp dir and drives it with terratest's `terraform` module, where `provider` is
-`"awscc"`, `"aws"`, or `"cfncompat"`.
+`../awscdk/`, all three terraform scenarios (`../terraform/awscc/`, `../terraform/aws/`,
+`../terraform/cfncompat/`), and `../cdktn/` (Option B, `../docs/OPTIONS.md`), side by
+side, through one shared `Suite` interface (`suite.go`): `cdkSuite` shells out to `npx cdk`
+in `../awscdk`; `tfSuite` copies `../terraform/<provider>/stack-<x>` (plus
+`../terraform/<provider>/modules` and `../lambda`, via the whole-repo copy
+`test_structure.CopyTerraformFolderToTemp` does) into a temp dir and drives it with
+terratest's `terraform` module, where `provider` is `"awscc"`, `"aws"`, or `"cfncompat"`;
+`cdktnSuite` shells out to `npx cdktn` in `../cdktn` (with `SUFFIX` in the environment,
+since the app reads it directly rather than as a CLI var/context flag).
 
-`harness_test.go` runs the identical flow for all four:
+`harness_test.go` runs the identical flow for all five:
 
 ```
 deploy A      -> assert config includes {a};       upload a/1         -> queue a receives
@@ -46,21 +48,31 @@ and `TestTerraformAws` -- each stack's custom resource GETs the bucket's existin
 notification configuration, merges in only its own entry, and PUTs the merged result back,
 so no stack's apply clobbers another's target.
 
+`TestCdktn` runs the same flow against `../cdktn/` (Option B, `../docs/OPTIONS.md`), a
+cdktn TypeScript app porting `../terraform/cfncompat/` 1:1 -- same three stacks, same
+`cfncompat_custom_resource`-driven merge semantics, but built with
+`@cdktn/provider-cfncompat`'s `CustomResource` construct instead of HCL. **Expected: fully
+GREEN**, for the same reason `TestTerraformCfncompat` is; a regression here with
+`TestTerraformCfncompat` still GREEN would point at the construct/binding/CLI layer
+rather than the cfncompat protocol engine itself.
+
 ## Prereqs
 
 ```sh
 mise install                       # terraform 1.15.9, go, node 24, aws-cli (repo root .mise.toml)
 cd awscdk && npm install && cd ..  # aws-cdk-lib / aws-cdk CLI for the cdk suite
+cd cdktn && npm install && cd ..   # cdktn CLI + prebuilt providers for the cdktn suite
 ```
 
 ## Running
 
 ```sh
-aws-vault exec --no-session tcons-vincent -- make test             # all four suites
+aws-vault exec --no-session tcons-vincent -- make test             # all five suites
 aws-vault exec --no-session tcons-vincent -- make test-cdk         # just TestAwsCdk
 aws-vault exec --no-session tcons-vincent -- make test-awscc       # just TestTerraformAwscc
 aws-vault exec --no-session tcons-vincent -- make test-aws         # just TestTerraformAws
 aws-vault exec --no-session tcons-vincent -- make test-cfncompat   # just TestTerraformCfncompat
+aws-vault exec --no-session tcons-vincent -- make test-cdktn       # just TestCdktn
 ```
 
 Or drive `go test` directly:
@@ -70,6 +82,7 @@ aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -r
 aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestTerraformAwscc$' ./...
 aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestTerraformAws$' ./...
 aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestTerraformCfncompat$' ./...
+aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestCdktn$' ./...
 ```
 
 Region defaults to `us-east-1` (`AWS_REGION`, set by `.mise.toml`); to point at a
@@ -89,8 +102,8 @@ for inspection after a run.
 
 ```
 integ/
-  suite.go             # Suite interface + cdkSuite / tfSuite implementations
-  harness_test.go      # TestAwsCdk, TestTerraformAwscc, TestTerraformAws, TestTerraformCfncompat -- the shared CONTRACT.md flow
+  suite.go             # Suite interface + cdkSuite / tfSuite / cdktnSuite implementations
+  harness_test.go      # TestAwsCdk, TestTerraformAwscc, TestTerraformAws, TestTerraformCfncompat, TestCdktn -- the shared CONTRACT.md flow
   assert.go            # assertNotificationTargets, assertDelivery, assertNoCrossDelivery
   aws/
     s3.go              # GetS3BucketNotificationE, UploadS3File, EmptyBucket (all object versions)
