@@ -1,3 +1,4 @@
+import { Fn } from "cdktn";
 import * as fs from 'fs';
 import * as path from 'path';
 import { Construct } from 'constructs';
@@ -52,7 +53,7 @@ export class BucketNotificationsPolyfill extends Construct {
 
     const handlerRole = new IamRole(this, 'HandlerRole', {
       roleName: `s3n-harness-${suffix}-${owner}-notifications-handler`,
-      assumeRolePolicyDocument: JSON.stringify({
+      assumeRolePolicyDocument: Fn.jsonencode({
         Version: '2012-10-17',
         Statement: [
           {
@@ -70,7 +71,7 @@ export class BucketNotificationsPolyfill extends Construct {
       policies: [
         {
           policyName: 's3-bucket-notifications',
-          policyDocument: JSON.stringify({
+          policyDocument: Fn.jsonencode({
             Version: '2012-10-17',
             Statement: [
               {

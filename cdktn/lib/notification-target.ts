@@ -1,3 +1,4 @@
+import { Fn } from "cdktn";
 import * as fs from 'fs';
 import * as path from 'path';
 import { Construct } from 'constructs';
@@ -47,7 +48,7 @@ export class NotificationTarget extends Construct {
 
     const role = new IamRole(this, 'LambdaRole', {
       roleName: `s3n-harness-${suffix}-${owner}-lambda`,
-      assumeRolePolicyDocument: JSON.stringify({
+      assumeRolePolicyDocument: Fn.jsonencode({
         Version: '2012-10-17',
         Statement: [
           {
@@ -61,7 +62,7 @@ export class NotificationTarget extends Construct {
       policies: [
         {
           policyName: 'sqs-send',
-          policyDocument: JSON.stringify({
+          policyDocument: Fn.jsonencode({
             Version: '2012-10-17',
             Statement: [
               {
