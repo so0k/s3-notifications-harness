@@ -14,3 +14,8 @@ OPTION-C-PLAN.md first for the design and its current status; these for the deta
 Both plans are longer than this repo's usual 200-line ceiling. They are deliberately not split
 further: each is a single unit of work whose sections are only meaningful in order, and neither
 is a reference anyone navigates into — this index is the entry point.
+
+## Upstream links
+
+- TerraConstructs PR: https://github.com/TerraConstructs/base/pull/163 (branch `feat/cfncompat-custom-resource`)
+- cfncompat pseudo-parameters / GetAZs polyfill (fills the account-id / AZ gaps in awscc-gaps.md): https://github.com/cdktn-io/terraform-provider-cfncompat/pull/19
