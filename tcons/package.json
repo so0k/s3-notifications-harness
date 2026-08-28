@@ -1,0 +1,23 @@
+{
+  "name": "s3n-harness-tcons",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "synth": "cdktn synth",
+    "deploy": "cdktn deploy",
+    "destroy": "cdktn destroy"
+  },
+  "dependencies": {
+    "cdktn": "^0.24.0",
+    "constructs": "~10.7.2",
+    "@cdktn/provider-aws": "^25.0.0",
+    "@cdktn/provider-cfncompat": "^1.0.0",
+    "terraconstructs": "file:../../../tcons/base-cfncompat/dist/js/terraconstructs@0.0.0.jsii.tgz"
+  },
+  "devDependencies": {
+    "cdktn-cli": "^0.24.0",
+    "typescript": "^5.9.0",
+    "tsx": "^4.19.2",
+    "@types/node": "^22"
+  }
+}

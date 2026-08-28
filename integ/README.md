@@ -2,16 +2,18 @@
 
 Terratest (Go) suite that drives the CONTRACT.md deploy/validate flow against
 `../awscdk/`, all three terraform scenarios (`../terraform/awscc/`, `../terraform/aws/`,
-`../terraform/cfncompat/`), and `../cdktn/` (Option B, `../docs/OPTIONS.md`), side by
-side, through one shared `Suite` interface (`suite.go`): `cdkSuite` shells out to `npx cdk`
-in `../awscdk`; `tfSuite` copies `../terraform/<provider>/stack-<x>` (plus
-`../terraform/<provider>/modules` and `../lambda`, via the whole-repo copy
-`test_structure.CopyTerraformFolderToTemp` does) into a temp dir and drives it with
-terratest's `terraform` module, where `provider` is `"awscc"`, `"aws"`, or `"cfncompat"`;
-`cdktnSuite` shells out to `npx cdktn` in `../cdktn` (with `SUFFIX` in the environment,
-since the app reads it directly rather than as a CLI var/context flag).
+`../terraform/cfncompat/`), `../cdktn/` (Option B, `../docs/OPTIONS.md`), and `../tcons/`
+(Option C, `../docs/OPTION-C-PLAN.md`), side by side, through one shared `Suite` interface
+(`suite.go`): `cdkSuite` shells out to `npx cdk` in `../awscdk`; `tfSuite` copies
+`../terraform/<provider>/stack-<x>` (plus `../terraform/<provider>/modules` and
+`../lambda`, via the whole-repo copy `test_structure.CopyTerraformFolderToTemp` does) into
+a temp dir and drives it with terratest's `terraform` module, where `provider` is
+`"awscc"`, `"aws"`, or `"cfncompat"`; `cdktnSuite` and `tconsSuite` (both a `tsSuite`
+parameterised by name and working directory) shell out to `npx cdktn` in `../cdktn` and
+`../tcons` respectively (with `SUFFIX` in the environment, since each app reads it directly
+rather than as a CLI var/context flag).
 
-`harness_test.go` runs the identical flow for all five:
+`harness_test.go` runs the identical flow for all six:
 
 ```
 deploy A      -> assert config includes {a};       upload a/1         -> queue a receives
@@ -56,23 +58,36 @@ GREEN**, for the same reason `TestTerraformCfncompat` is; a regression here with
 `TestTerraformCfncompat` still GREEN would point at the construct/binding/CLI layer
 rather than the cfncompat protocol engine itself.
 
+`TestTcons` runs the same flow against `../tcons/` (Option C, `../docs/OPTION-C-PLAN.md`),
+a cdktn TypeScript app built directly on TerraConstructs' own
+`Bucket.addEventNotification` (the `feat/cfncompat-custom-resource` branch of
+`terraconstructs/base`, packaged locally with `pnpm package:js` into a `file:` tarball
+dependency) rather than on a polyfill construct local to this harness -- same three
+stacks, same `cfncompat_custom_resource`-driven merge semantics, selected via the
+`@terraconstructs/aws-s3:keepNotificationInImportedBucket` context key. **Expected: fully
+GREEN**, for the same reason `TestCdktn` and `TestTerraformCfncompat` are; a regression
+here with those two still GREEN would point at the TerraConstructs port itself rather than
+the cfncompat protocol engine or this harness's own polyfill construct.
+
 ## Prereqs
 
 ```sh
 mise install                       # terraform 1.15.9, go, node 24, aws-cli (repo root .mise.toml)
 cd awscdk && npm install && cd ..  # aws-cdk-lib / aws-cdk CLI for the cdk suite
 cd cdktn && npm install && cd ..   # cdktn CLI + prebuilt providers for the cdktn suite
+cd tcons && npm install && cd ..   # cdktn CLI + terraconstructs (local pnpm package:js tarball) for the tcons suite
 ```
 
 ## Running
 
 ```sh
-aws-vault exec --no-session tcons-vincent -- make test             # all five suites
+aws-vault exec --no-session tcons-vincent -- make test             # all six suites
 aws-vault exec --no-session tcons-vincent -- make test-cdk         # just TestAwsCdk
 aws-vault exec --no-session tcons-vincent -- make test-awscc       # just TestTerraformAwscc
 aws-vault exec --no-session tcons-vincent -- make test-aws         # just TestTerraformAws
 aws-vault exec --no-session tcons-vincent -- make test-cfncompat   # just TestTerraformCfncompat
 aws-vault exec --no-session tcons-vincent -- make test-cdktn       # just TestCdktn
+aws-vault exec --no-session tcons-vincent -- make test-tcons       # just TestTcons
 ```
 
 Or drive `go test` directly:
@@ -83,6 +98,7 @@ aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -r
 aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestTerraformAws$' ./...
 aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestTerraformCfncompat$' ./...
 aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestCdktn$' ./...
+aws-vault exec --no-session tcons-vincent -- go test -v -count 1 -timeout 60m -run '^TestTcons$' ./...
 ```
 
 Region defaults to `us-east-1` (`AWS_REGION`, set by `.mise.toml`); to point at a
@@ -102,8 +118,8 @@ for inspection after a run.
 
 ```
 integ/
-  suite.go             # Suite interface + cdkSuite / tfSuite / cdktnSuite implementations (cdkSuite and cdktnSuite share cliSuite)
-  harness_test.go      # TestAwsCdk, TestTerraformAwscc, TestTerraformAws, TestTerraformCfncompat, TestCdktn -- the shared CONTRACT.md flow
+  suite.go             # Suite interface + cdkSuite / tfSuite / tsSuite implementations (cdkSuite and tsSuite share cliSuite; tsSuite backs both cdktnSuite and tconsSuite)
+  harness_test.go      # TestAwsCdk, TestTerraformAwscc, TestTerraformAws, TestTerraformCfncompat, TestCdktn, TestTcons -- the shared CONTRACT.md flow
   assert.go            # assertNotificationTargets, assertDelivery, assertNoCrossDelivery
   aws/
     s3.go              # GetS3BucketNotificationE, UploadS3File, EmptyBucket (all object versions)

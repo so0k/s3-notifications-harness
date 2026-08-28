@@ -1,8 +1,8 @@
 // Package integ contains the s3-notifications-harness terratest (Go) suite:
 // it drives the same deploy/validate flow (see CONTRACT.md) against the awscdk/
-// suite, each terraform/ scenario, and the cdktn/ app via the Suite interface
-// below, so harness_test.go's TestAwsCdk, TestTerraformAwscc, TestTerraformAws,
-// TestTerraformCfncompat, and TestCdktn share one implementation.
+// suite, each terraform/ scenario, the cdktn/ app, and the tcons/ app via the Suite
+// interface below, so harness_test.go's TestAwsCdk, TestTerraformAwscc, TestTerraformAws,
+// TestTerraformCfncompat, TestCdktn, and TestTcons share one implementation.
 package integ
 
 import (
@@ -212,37 +212,54 @@ func (s *tfSuite) Destroy(t *testing.T, x string) {
 }
 
 // ---------------------------------------------------------------------------
-// cdktnSuite
+// tsSuite (cdktnSuite / tconsSuite)
 // ---------------------------------------------------------------------------
 
-// cdktnSuite drives the cdktn/ TypeScript app (Option B, docs/OPTIONS.md) via the
-// `cdktn` CLI (through `npx`), run from the cdktn/ directory (relative to integ/,
-// where `go test` runs) so the app's `../lambda` handler paths resolve. Unlike
-// cdkSuite/tfSuite, every stage needs SUFFIX in the environment: the app reads it
-// directly (see cdktn/main.ts) rather than taking it as a CLI var/context flag.
-type cdktnSuite struct {
-	cli cliSuite
+// tsSuite drives a `cdktn`-CLI TypeScript app (through `npx`), run from that app's own
+// directory (relative to integ/, where `go test` runs) so its `../lambda` handler paths
+// resolve. Shared by NewCdktnSuite (../cdktn -- Option B, docs/OPTIONS.md: a polyfill
+// construct local to this harness) and NewTconsSuite (../tcons -- Option C,
+// docs/OPTION-C-PLAN.md: `Bucket.addEventNotification` built directly into
+// TerraConstructs itself, from a local `pnpm package` tarball) -- both apps share the
+// same stack-naming and SUFFIX-via-environment conventions (see cdktn/main.ts and
+// tcons/main.ts), so one implementation drives both. Unlike cdkSuite/tfSuite, every
+// stage needs SUFFIX in the environment: the app reads it directly rather than taking
+// it as a CLI var/context flag.
+type tsSuite struct {
+	name string
+	cli  cliSuite
 }
 
-func NewCdktnSuite(suffix string) *cdktnSuite {
-	return &cdktnSuite{cli: cliSuite{
-		tool:    "cdktn",
-		workDir: "../cdktn",
-		suffix:  suffix,
-		env:     map[string]string{"SUFFIX": suffix},
-	}}
+func NewCdktnSuite(suffix string) *tsSuite {
+	return newTsSuite("cdktn", "../cdktn", suffix)
 }
 
-func (s *cdktnSuite) Name() string { return "cdktn" }
+func NewTconsSuite(suffix string) *tsSuite {
+	return newTsSuite("tcons", "../tcons", suffix)
+}
 
-// stackName returns e.g. "s3n-harness-a-<suffix>" for x == "a" -- the TerraformStack
-// id cdktn/main.ts constructs each stack with, and so also the stack's cdktf.out
-// directory name and its key in an --outputs-file's JSON.
-func (s *cdktnSuite) stackName(x string) string {
+func newTsSuite(name, workDir, suffix string) *tsSuite {
+	return &tsSuite{
+		name: name,
+		cli: cliSuite{
+			tool:    "cdktn",
+			workDir: workDir,
+			suffix:  suffix,
+			env:     map[string]string{"SUFFIX": suffix},
+		},
+	}
+}
+
+func (s *tsSuite) Name() string { return s.name }
+
+// stackName returns e.g. "s3n-harness-a-<suffix>" for x == "a" -- the TerraformStack id
+// both apps construct each stack with, and so also the stack's cdktf.out directory name
+// and its key in an --outputs-file's JSON.
+func (s *tsSuite) stackName(x string) string {
 	return fmt.Sprintf("s3n-harness-%s-%s", x, s.cli.suffix)
 }
 
-func (s *cdktnSuite) Deploy(t *testing.T, x string) {
+func (s *tsSuite) Deploy(t *testing.T, x string) {
 	name := s.stackName(x)
 	outFile := s.cli.freshOutputsFile(x)
 
@@ -250,39 +267,39 @@ func (s *cdktnSuite) Deploy(t *testing.T, x string) {
 	if err != nil && strings.Contains(out, "ErrorCode: InternalFailure") {
 		// Cloud Control occasionally fails a CreateResource with a bare "InternalFailure"
 		// (AWS::IAM::Role); a second apply converges, so retry that one signature.
-		t.Logf("[cdktn] %s: Cloud Control InternalFailure, retrying deploy once", name)
+		t.Logf("[%s] %s: Cloud Control InternalFailure, retrying deploy once", s.name, name)
 		out, err = s.cli.run(t, "deploy", name, "--auto-approve", "--outputs-file", outFile)
 	}
-	require.NoError(t, err, "cdktn deploy %s failed:\n%s", name, out)
+	require.NoError(t, err, "%s deploy %s failed:\n%s", s.name, name, out)
 }
 
-func (s *cdktnSuite) Plan(t *testing.T, x string) string {
+func (s *tsSuite) Plan(t *testing.T, x string) string {
 	name := s.stackName(x)
 	return s.cli.plan(t, name, "diff", name)
 }
 
-// Outputs reads the outputs file Deploy(x) wrote (cdktn/main.ts's TerraformOutput ids
-// already are the canonical snake_case keys -- bucket_name, lambda_arn, queue_url,
-// owner -- so, unlike cdkSuite, no key translation is needed). If the file isn't there
-// (e.g. Outputs is called in a run that skipped deploy_<x> via SKIP_deploy_<x>=true,
-// reusing state from an earlier run), falls back to asking cdktn directly.
-func (s *cdktnSuite) Outputs(t *testing.T, x string) map[string]string {
+// Outputs reads the outputs file Deploy(x) wrote (both apps' TerraformOutput ids already
+// are the canonical snake_case keys -- bucket_name, lambda_arn, queue_url, owner -- so,
+// unlike cdkSuite, no key translation is needed). If the file isn't there (e.g. Outputs
+// is called in a run that skipped deploy_<x> via SKIP_deploy_<x>=true, reusing state from
+// an earlier run), falls back to asking cdktn directly.
+func (s *tsSuite) Outputs(t *testing.T, x string) map[string]string {
 	name := s.stackName(x)
 	outFile := s.cli.outputsFile(x)
 
 	data, err := os.ReadFile(outFile)
 	if err != nil {
-		t.Logf("[cdktn] outputs file %s not found (%v); falling back to `cdktn output --outputs-file`", outFile, err)
+		t.Logf("[%s] outputs file %s not found (%v); falling back to `cdktn output --outputs-file`", s.name, outFile, err)
 		out, runErr := s.cli.run(t, "output", name, "--outputs-file", outFile)
-		require.NoError(t, runErr, "cdktn output %s failed:\n%s", name, out)
+		require.NoError(t, runErr, "%s output %s failed:\n%s", s.name, name, out)
 		data, err = os.ReadFile(outFile)
-		require.NoError(t, err, "reading cdktn outputs file %s after fallback `cdktn output` -- did Deploy(%s) run first?", outFile, x)
+		require.NoError(t, err, "reading %s outputs file %s after fallback `cdktn output` -- did Deploy(%s) run first?", s.name, outFile, x)
 	}
 
 	return s.cli.stackOutputs(t, data, outFile, name)
 }
 
-func (s *cdktnSuite) Destroy(t *testing.T, x string) {
+func (s *tsSuite) Destroy(t *testing.T, x string) {
 	name := s.stackName(x)
 	s.cli.destroy(t, name, "destroy", name, "--auto-approve")
 }

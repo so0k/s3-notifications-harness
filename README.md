@@ -10,8 +10,9 @@ problem across independently-deployed stacks, side by side:
 | `terraform/aws/` | Terraform 1.15 + `hashicorp/aws` only — stack-a's own target also via `aws_s3_bucket_notification` | RED |
 | `terraform/cfncompat/` | Terraform 1.15 + `hashicorp/awscc` + `cdktn-io/cfncompat` — every target attached by a `cfncompat_custom_resource` driving AWS CDK's own notifications handler in merge mode | GREEN |
 | `cdktn/` | cdktn 0.24 TypeScript + `@cdktn/provider-cfncompat`'s `CustomResource` — `terraform/cfncompat/` ported 1:1 (Option B, docs/OPTIONS.md) | GREEN |
+| `tcons/` | cdktn 0.24 TypeScript + TerraConstructs' own `Bucket.addEventNotification` (Option C, docs/OPTION-C-PLAN.md), from a local `pnpm package:js` tarball of `terraconstructs/base`'s `feat/cfncompat-custom-resource` branch | GREEN |
 
-Three stacks per suite (five suites total):
+Three stacks per suite (six suites total):
 
 - **Stack A** — owns the bucket, adds notification target `a` (lambda, prefix `a/`)
 - **Stack B** — references A's bucket by name, adds target `b` (prefix `b/`)
@@ -38,7 +39,7 @@ aws-vault exec --no-session tcons-vincent -- make -C integ test
 - [CONTRACT.md](CONTRACT.md) — cross-suite contract: names, inputs, outputs, test flow (single source of truth)
 - [docs/OPTIONS.md](docs/OPTIONS.md) — the options considered for the cfncompat polyfill, which of them are built (`terraform/cfncompat/`, `cdktn/`), and what is left
 - [docs/RESULTS.md](docs/RESULTS.md) — index of the append-only per-run result documents under `docs/results/`
-- [awscdk/README.md](awscdk/README.md), [terraform/README.md](terraform/README.md), [cdktn/README.md](cdktn/README.md), [integ/README.md](integ/README.md) — per-suite usage
+- [awscdk/README.md](awscdk/README.md), [terraform/README.md](terraform/README.md), [cdktn/README.md](cdktn/README.md), [tcons/README.md](tcons/README.md), [integ/README.md](integ/README.md) — per-suite usage
 - [docs/awscc-constraints.md](docs/awscc-constraints.md) — awscc behaviours hit during the runs, with evidence
 - [docs/awscc-gaps.md](docs/awscc-gaps.md) — what awscc structurally lacks and what would fill it
 - [docs/OPTION-C-PLAN.md](docs/OPTION-C-PLAN.md) — proposed TerraConstructs port of the CDK custom-resource notifications

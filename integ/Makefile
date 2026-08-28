@@ -1,6 +1,6 @@
 include ./common.mk
 
-test: test-cdk test-awscc test-aws test-cfncompat test-cdktn ## Run all five suites (TestAwsCdk, TestTerraformAwscc, TestTerraformAws, TestTerraformCfncompat, TestCdktn)
+test: test-cdk test-awscc test-aws test-cfncompat test-cdktn test-tcons ## Run all six suites (TestAwsCdk, TestTerraformAwscc, TestTerraformAws, TestTerraformCfncompat, TestCdktn, TestTcons)
 .PHONY: test
 
 test-cdk: ## Run TestAwsCdk only (expected GREEN)
@@ -22,3 +22,7 @@ test-cfncompat: ## Run TestTerraformCfncompat only (expected GREEN, see harness_
 test-cdktn: ## Run TestCdktn only (expected GREEN, see harness_test.go)
 	go test -v -count 1 -timeout 60m -run '^TestCdktn$$' ./...
 .PHONY: test-cdktn
+
+test-tcons: ## Run TestTcons only (expected GREEN, see harness_test.go)
+	go test -v -count 1 -timeout 60m -run '^TestTcons$$' ./...
+.PHONY: test-tcons

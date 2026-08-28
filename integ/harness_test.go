@@ -102,6 +102,28 @@ func TestCdktn(t *testing.T) {
 	runHarness(t, NewCdktnSuite(suffix), suffix, region)
 }
 
+// TestTcons runs the same flow against `../tcons/` (Option C, docs/OPTION-C-PLAN.md): a
+// cdktn TypeScript app built directly on TerraConstructs' own
+// `Bucket.addEventNotification` (the `feat/cfncompat-custom-resource` branch of
+// terraconstructs/base, packaged locally with `pnpm package:js` into a `file:` tarball
+// dependency), rather than on a polyfill construct local to this harness (that's
+// `../cdktn/`, Option B). The `@terraconstructs/aws-s3:keepNotificationInImportedBucket`
+// context key (set in tcons/cdktf.json) forces every stack -- including stack A, which
+// owns the bucket -- through the `Custom::S3BucketNotifications` custom resource instead
+// of the native `aws_s3_bucket_notification` resource, exactly like `../cdktn/` and
+// `../terraform/cfncompat/`. Expected: fully GREEN, for the same reason `TestCdktn` and
+// `TestTerraformCfncompat` are -- each stack's custom resource merges its own entry into
+// the bucket's existing notification configuration instead of overwriting it. A
+// regression here, with `TestCdktn` and `TestTerraformCfncompat` still GREEN, points at
+// the TerraConstructs port itself (docs/OPTION-C-PLAN.md) rather than the cfncompat
+// protocol engine or the harness's own polyfill construct.
+func TestTcons(t *testing.T) {
+	suffix := strings.ToLower(random.UniqueId())
+	region := awsRegion()
+	t.Logf("suite=tcons suffix=%s region=%s", suffix, region)
+	runHarness(t, NewTconsSuite(suffix), suffix, region)
+}
+
 // runHarness drives CONTRACT.md's integ/ flow identically for all five suites:
 //
 //	deploy A      -> assert config includes {a};       upload a/1          -> queue a receives
