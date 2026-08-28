@@ -6,6 +6,8 @@ terraform {
       source  = "hashicorp/awscc"
       version = "~> 1.98"
     }
+    # Only for modules/bucket-notifications' response bucket, which needs force_destroy
+    # (awscc_s3_bucket has no equivalent). Not used anywhere else in this scenario.
     aws = {
       source  = "hashicorp/aws"
       version = "~> 6.0"

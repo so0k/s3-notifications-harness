@@ -1,8 +1,7 @@
 # Shared notification target: results queue + lambda + role + s3->lambda permission.
 # Used identically by stack-a, stack-b, and stack-c so every stack's target is built the
-# same way regardless of who owns the underlying bucket.
-
-data "aws_caller_identity" "current" {}
+# same way regardless of who owns the underlying bucket. Built entirely from awscc_*
+# resources -- no hashicorp/aws provider is required by this module.
 
 resource "awscc_sqs_queue" "results" {
   queue_name = "s3n-harness-${var.suffix}-${var.owner}-results"
@@ -59,10 +58,17 @@ resource "awscc_lambda_function" "handler" {
   }
 }
 
+locals {
+  # Derive the account id from the lambda's own arn (arn:aws:lambda:<region>:<account_id>:...)
+  # instead of a data "aws_caller_identity" lookup -- avoids requiring hashicorp/aws in this
+  # module just to fill in the lambda permission's source_account.
+  account_id = split(":", awscc_lambda_function.handler.arn)[4]
+}
+
 resource "awscc_lambda_permission" "allow_s3" {
   action         = "lambda:InvokeFunction"
   principal      = "s3.amazonaws.com"
   function_name  = awscc_lambda_function.handler.function_name
   source_arn     = var.bucket_arn
-  source_account = data.aws_caller_identity.current.account_id
+  source_account = local.account_id
 }

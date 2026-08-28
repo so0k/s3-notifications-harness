@@ -30,16 +30,20 @@ CDK handler inlined via `code.zip_file = file(...)` — no `archive_file`, no zi
 
 ### Where `hashicorp/aws` is still used
 
-Two places, both deliberate:
+One place, deliberate:
 
-- `data "aws_caller_identity"` in `../awscc/modules/notification-target`, for the lambda
-  permission's `source_account` (awscc has no equivalent) — same as the `../awscc/` scenario.
-- `aws_s3_bucket` **for the per-stack cfncompat response bucket only**, because it needs
-  `force_destroy = true` and `awscc_s3_bucket` has no equivalent. cfncompat deletes a response
-  object only *best effort*, after it has successfully read and parsed it, so a failed or
-  timed-out handler invocation can leave one behind; the terratest cleanup empties only the
-  *shared* bucket, so an `awscc_s3_bucket` here could strand the root with `BucketNotEmpty` on
+- `aws_s3_bucket` **for the per-stack cfncompat response bucket only** (`modules/bucket-notifications`),
+  because it needs `force_destroy = true` and `awscc_s3_bucket` has no equivalent. cfncompat
+  deletes a response object only *best effort*, after it has successfully read and parsed it, so a
+  failed or timed-out handler invocation can leave one behind; the terratest cleanup empties only
+  the *shared* bucket, so an `awscc_s3_bucket` here could strand the root with `BucketNotEmpty` on
   destroy. This is orthogonal to what the scenario tests.
+
+`../awscc/modules/notification-target` (reused here) needs no `hashicorp/aws`: the lambda
+permission's `source_account` is derived from the lambda's own arn instead of a
+`data "aws_caller_identity"` lookup. Since a module can't declare its own provider
+configuration, each root here still carries a minimal `provider "aws"` block (see `versions.tf`)
+purely so `modules/bucket-notifications`' response bucket has one to use.
 
 ## Apply order (matches the `integ/` terratest flow)
 

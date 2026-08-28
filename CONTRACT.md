@@ -9,7 +9,7 @@ Region: `us-east-1`. Credentials: ambient env (`aws-vault exec --no-session tcon
   - bucket name = `s3n-harness-<suffix>`
 
 ## Per-stack naming (X in a|b|c, SUFFIX = suffix)
-- Stack name: CDK `S3nHarness<A|B|C>-<suffix>`; Terraform root modules `terraform/<provider>/stack-a`, `stack-b`, `stack-c` for each of the three sibling scenarios, `provider` in `awscc` (`hashicorp/awscc` + `hashicorp/aws`), `aws` (`hashicorp/aws` only), `cfncompat` (`hashicorp/awscc` + `hashicorp/aws` + `cdktn-io/cfncompat`) — see `terraform/README.md` (each root has its own local state in its working dir, terratest copies each into a temp dir).
+- Stack name: CDK `S3nHarness<A|B|C>-<suffix>`; Terraform root modules `terraform/<provider>/stack-a`, `stack-b`, `stack-c` for each of the three sibling scenarios, `provider` in `awscc` (`hashicorp/awscc` only in stack-a; stack-b/c add `hashicorp/aws`, kept solely for `aws_s3_bucket_notification`), `aws` (`hashicorp/aws` only), `cfncompat` (`hashicorp/awscc` + `hashicorp/aws`, kept solely for the response bucket's `force_destroy` + `cdktn-io/cfncompat`) — see `terraform/README.md` (each root has its own local state in its working dir, terratest copies each into a temp dir).
 - Lambda function name: `s3n-harness-<suffix>-<x>` (env `RESULTS_QUEUE_URL`, `STACK_NAME=<x>`), runtime `nodejs22.x`, handler `index.handler`, source `lambda/index.js` (single file, CommonJS, no deps beyond runtime SDK).
 - Lambda role: allows `sqs:SendMessage` on its results queue + `AWSLambdaBasicExecutionRole`.
 - Lambda permission: principal `s3.amazonaws.com`, source arn = bucket arn, source account = current account.
@@ -38,7 +38,8 @@ the canonical snake_case keys before returning them to the shared assertion help
 
 ## Stack B / C specifics
 - CDK: `s3.Bucket.fromBucketName(this, 'Bucket', bucketName)` + `addEventNotification(...)`.
-- Terraform (awscc/aws): `data "aws_s3_bucket"` + `aws_s3_bucket_notification` (hashicorp/aws) with one `lambda_function` block; the target module is `awscc_*` for lambda/iam/sqs/permission in the awscc scenario, `aws_*` (+ `data "archive_file"` for the lambda zip) in the aws scenario.
+- Terraform (awscc): `data "awscc_s3_bucket"` (id = bucket name; not `data "aws_s3_bucket"`) + `aws_s3_bucket_notification` (hashicorp/aws, the only resource in this scenario's stack-b/c that needs it — awscc has no equivalent) with one `lambda_function` block; the target module is `awscc_*` for lambda/iam/sqs/permission.
+- Terraform (aws): `data "aws_s3_bucket"` + `aws_s3_bucket_notification` (hashicorp/aws) with one `lambda_function` block; the target module is `aws_*` (+ `data "archive_file"` for the lambda zip).
 - Terraform (cfncompat): no bucket data source at all -- the bucket name and arn are computed from the deterministic naming above (`s3n-harness-<suffix>` / `arn:aws:s3:::s3n-harness-<suffix>`) -- plus a per-stack `cfncompat_custom_resource` (`modules/bucket-notifications`) driving AWS CDK's own bucket-notifications Lambda handler in its "unmanaged" (merge) mode; no `aws_s3_bucket_notification` at all. The target module is `terraform/awscc/modules/notification-target`, reused by relative path.
 
 ## Provider/tool versions

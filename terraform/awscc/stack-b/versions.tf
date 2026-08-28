@@ -6,6 +6,7 @@ terraform {
       source  = "hashicorp/awscc"
       version = "~> 1.98"
     }
+    # Kept only for aws_s3_bucket_notification (main.tf) -- awscc has no equivalent resource.
     aws = {
       source  = "hashicorp/aws"
       version = "~> 6.0"

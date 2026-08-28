@@ -7,9 +7,9 @@ attributed to a specific resource rather than to Terraform in general:
 
 | Scenario | Provider(s) | Bucket owned by (stack-a) | Cross-stack attach (stack-b/c) |
 |---|---|---|---|
-| [`awscc/`](awscc/README.md) | `hashicorp/awscc` (+ `hashicorp/aws` for the caller-identity data source) | `awscc_s3_bucket` with inline `notification_configuration` | `aws_s3_bucket_notification` |
+| [`awscc/`](awscc/README.md) | `hashicorp/awscc` (stack-a: `awscc` only; stack-b/c: + `hashicorp/aws`, kept solely for `aws_s3_bucket_notification`, which has no `awscc` equivalent) | `awscc_s3_bucket` with inline `notification_configuration` | `aws_s3_bucket_notification` |
 | [`aws/`](aws/README.md) | `hashicorp/aws` only | `aws_s3_bucket` + a separate `aws_s3_bucket_notification` | `aws_s3_bucket_notification` |
-| [`cfncompat/`](cfncompat/README.md) | `hashicorp/awscc` + `cdktn-io/cfncompat` (+ `hashicorp/aws` for the caller-identity data source and the response bucket's `force_destroy`) | `awscc_s3_bucket` with **no** `notification_configuration` at all + a per-stack `cfncompat_custom_resource` (no `aws_s3_bucket_notification` anywhere) | same `cfncompat_custom_resource` polyfill |
+| [`cfncompat/`](cfncompat/README.md) | `hashicorp/awscc` + `cdktn-io/cfncompat` (+ `hashicorp/aws`, kept solely for `modules/bucket-notifications`' response bucket, which needs `force_destroy`) | `awscc_s3_bucket` with **no** `notification_configuration` at all + a per-stack `cfncompat_custom_resource` (no `aws_s3_bucket_notification` anywhere) | same `cfncompat_custom_resource` polyfill |
 
 In `awscc/`, stack-a's target is inline on the bucket resource itself; in `aws/`, stack-a's
 target uses the very same `aws_s3_bucket_notification` resource that stack-b and stack-c use.

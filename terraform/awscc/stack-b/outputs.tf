@@ -1,5 +1,5 @@
 output "bucket_name" {
-  value = data.aws_s3_bucket.shared.bucket
+  value = data.awscc_s3_bucket.shared.bucket_name
 }
 
 output "lambda_arn" {

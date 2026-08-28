@@ -3,14 +3,21 @@
 Three independent root modules that reproduce the "single authoritative S3 bucket notification
 configuration" problem: `stack-a` owns the bucket (`awscc_s3_bucket` with inline
 `notification_configuration.lambda_configurations`) and its own target; `stack-b` and `stack-c`
-reference the bucket by name (deterministic, never via remote state) and each attach their own
-target with `aws_s3_bucket_notification` (`hashicorp/aws`), which — unlike CDK's
-`addEventNotification` — replaces the bucket's entire notification configuration on every apply
-instead of merging with it.
+look the bucket up by name with `data "awscc_s3_bucket"` (deterministic, never via remote state)
+and each attach their own target with `aws_s3_bucket_notification` (`hashicorp/aws`), which —
+unlike CDK's `addEventNotification` — replaces the bucket's entire notification configuration on
+every apply instead of merging with it.
+
+`stack-a` is `hashicorp/awscc` only. `stack-b` and `stack-c` are the only places in this scenario
+that need `hashicorp/aws`, and only for that one resource — `aws_s3_bucket_notification` has no
+`awscc` equivalent, which is the whole point of the scenario, so it stays; everything else in
+those roots (including the bucket lookup) is `awscc_*`.
 
 All three roots share `modules/notification-target` (results SQS queue, lambda role, lambda
-function, and the `s3.amazonaws.com` invoke permission), built entirely from `awscc_*` resources.
-`../cfncompat/`'s roots use this same module by relative path, so changes here affect that
+function, and the `s3.amazonaws.com` invoke permission), built entirely from `awscc_*` resources
+— including the lambda permission's `source_account`, derived from the lambda's own arn rather
+than a `data "aws_caller_identity"` lookup, so this module needs no `hashicorp/aws` provider at
+all. `../cfncompat/`'s roots use this same module by relative path, so changes here affect that
 scenario too.
 
 ## Apply order (matches the `integ/` terratest flow)

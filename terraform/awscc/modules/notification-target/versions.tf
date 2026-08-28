@@ -3,8 +3,5 @@ terraform {
     awscc = {
       source = "hashicorp/awscc"
     }
-    aws = {
-      source = "hashicorp/aws"
-    }
   }
 }
