@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -292,12 +293,20 @@ func (s *cdktnSuite) Deploy(t *testing.T, x string) {
 	outFile := s.outputsFile(x)
 	_ = os.Remove(outFile) // start clean so a failed deploy can't leave a stale outputs file behind
 
-	shell.RunCommandAndGetOutput(t, shell.Command{
+	// Cloud Control occasionally fails a CreateResource with a bare "InternalFailure"
+	// (seen on AWS::IAM::Role); a second apply converges, so retry that one signature.
+	cmd := shell.Command{
 		Command:    "npx",
 		Args:       []string{"cdktn", "deploy", name, "--auto-approve", "--outputs-file", outFile},
 		WorkingDir: cdktnWorkDir,
 		Env:        s.env(),
-	})
+	}
+	out, err := shell.RunCommandAndGetOutputE(t, cmd)
+	if err != nil && strings.Contains(out, "ErrorCode: InternalFailure") {
+		t.Logf("[cdktn] %s: Cloud Control InternalFailure, retrying deploy once", name)
+		out, err = shell.RunCommandAndGetOutputE(t, cmd)
+	}
+	require.NoError(t, err, "cdktn deploy %s failed:\n%s", name, out)
 }
 
 func (s *cdktnSuite) Plan(t *testing.T, x string) string {
