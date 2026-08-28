@@ -32,9 +32,10 @@ stage B and C's terraform plan, showing the replacement) once it starts failing.
 
 `TestTerraformAws` runs the same flow against a scenario where stack-a's target also goes
 through `aws_s3_bucket_notification` (the same resource type stack-b/c use), instead of
-awscc's inline config -- see `../terraform/README.md` and `TestTerraformAws`'s doc comment
-in `harness_test.go` for exactly what question comparing it against `TestTerraformAwscc`
-is meant to answer.
+awscc's inline config. **Expected: RED at the same stage as `TestTerraformAwscc`**, since
+that resource is authoritative over the whole bucket regardless of which provider owns
+stack-a's target -- comparing the two is what establishes that equivalence; see
+`../terraform/README.md` and `TestTerraformAws`'s doc comment in `harness_test.go`.
 
 `TestTerraformCfncompat` runs the same flow against `../terraform/cfncompat/`, which
 replaces `aws_s3_bucket_notification` everywhere (including on stack-a's own target) with
@@ -88,7 +89,7 @@ for inspection after a run.
 
 ```
 integ/
-  suite.go            # Suite interface + cdkSuite / tfSuite implementations
+  suite.go             # Suite interface + cdkSuite / tfSuite implementations
   harness_test.go      # TestAwsCdk, TestTerraformAwscc, TestTerraformAws, TestTerraformCfncompat -- the shared CONTRACT.md flow
   assert.go            # assertNotificationTargets, assertDelivery, assertNoCrossDelivery
   aws/

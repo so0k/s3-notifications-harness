@@ -26,6 +26,8 @@ resource "awscc_s3_bucket" "bucket" {
       function = module.target.lambda_arn
       filter = {
         s3_key = {
+          # "Prefix", not "prefix": awscc mirrors the CloudFormation schema, and S3 returns
+          # the CFN casing on read, so a lowercase name here is a perpetual plan diff.
           rules = [{
             name  = "Prefix"
             value = "a/"

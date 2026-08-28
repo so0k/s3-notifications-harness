@@ -11,7 +11,7 @@ test-awscc: ## Run TestTerraformAwscc only (expected RED starting at deploy B)
 	go test -v -count 1 -timeout 60m -run '^TestTerraformAwscc$$' ./...
 .PHONY: test-awscc
 
-test-aws: ## Run TestTerraformAws only (aws-vs-awscc comparison, see harness_test.go)
+test-aws: ## Run TestTerraformAws only (expected RED, same stage as awscc; see harness_test.go)
 	go test -v -count 1 -timeout 60m -run '^TestTerraformAws$$' ./...
 .PHONY: test-aws
 

@@ -2,7 +2,7 @@
 
 Region: `us-east-1`. Credentials: ambient env (`aws-vault exec --no-session tcons-vincent -- ...`). Never hardcode.
 
-## Inputs (identical for both suites)
+## Inputs (identical for every suite)
 - `suffix` (string, lowercase, e.g. `k3m9x1`): unique per test run.
   - CDK: `-c suffix=<suffix>` context. Terraform: `-var suffix=<suffix>`.
 - Stack B and C derive the bucket name deterministically, they never read Stack A's outputs:
@@ -16,7 +16,7 @@ Region: `us-east-1`. Credentials: ambient env (`aws-vault exec --no-session tcon
 - Results SQS queue: `s3n-harness-<suffix>-<x>-results` (standard queue).
 - Notification: event `s3:ObjectCreated:*`, filter prefix `<x>/`, target = the stack's lambda.
 
-## Outputs (every stack, both suites; canonical keys used by integ's `Suite` interface)
+## Outputs (every stack, every suite; canonical keys used by integ's `Suite` interface)
 - `bucket_name`  – the shared bucket name
 - `lambda_arn`   – this stack's lambda arn
 - `queue_url`    – this stack's results queue URL
@@ -45,7 +45,7 @@ the canonical snake_case keys before returning them to the shared assertion help
 - terraform 1.15.9 (mise), hashicorp/awscc `~> 1.98`, hashicorp/aws `~> 6.0`, hashicorp/archive (unpinned, used for the lambda zip in the `terraform/aws` scenario only), cdktn-io/cfncompat `~> 0.2` (used only in `terraform/cfncompat`, see `docs/OPTIONS.md`) (pin whatever latest resolves, commit lock files are ignored, use `required_providers`).
 - aws-cdk-lib `2.267.0`, aws-cdk `2.1139.0`, node 24, TypeScript app via `npx tsx bin/app.ts` (`cdk.json` app: `npx tsx bin/app.ts`).
 
-## integ/ (Go, terratest) test flow — same for both suites, parameterised by a `Suite` interface
+## integ/ (Go, terratest) test flow — same for every suite, parameterised by a `Suite` interface
 ```
 deploy A      → assert config ⊇ {a};      upload a/1 → queue a receives
 deploy B      → assert config ⊇ {a,b};    upload a/2,b/2 → queues a,b receive
@@ -55,7 +55,7 @@ destroy B     → assert config ⊇ {a,c}, ∌ b
 destroy C, A  (cleanup, deferred; always runs; empties bucket first)
 ```
 Assertion helper: `GetBucketNotificationConfiguration` → set of LambdaFunctionArn present. Stage skipping via `test_structure.RunTestStage` + `SKIP_*` env.
-Expected: `TestAwsCdk` GREEN, `TestTerraformAwscc` RED at "deploy B → config ⊇ {a,b}" (and the B plan output logged shows it replacing A's target); `TestTerraformAws` runs the same flow against the aws-only scenario (outcome is what the comparison is meant to answer — see harness_test.go's TestTerraformAws doc comment); `TestTerraformCfncompat` GREEN, since every stack's `cfncompat_custom_resource` merges its own entry into the bucket's existing notification configuration instead of overwriting it (see docs/OPTIONS.md Option A and harness_test.go's TestTerraformCfncompat doc comment). The test must log the terraform plan for B and C before applying.
+Expected: `TestAwsCdk` GREEN, `TestTerraformAwscc` RED at "deploy B → config ⊇ {a,b}" (and the B plan output logged shows it replacing A's target); `TestTerraformAws` RED at the same point and by the same mechanism, since `aws_s3_bucket_notification` is authoritative over the whole bucket no matter which provider owns stack A's own target (that equivalence is what the aws-vs-awscc comparison establishes — see harness_test.go's TestTerraformAws doc comment); `TestTerraformCfncompat` GREEN, since every stack's `cfncompat_custom_resource` merges its own entry into the bucket's existing notification configuration instead of overwriting it (see docs/OPTIONS.md Option A and harness_test.go's TestTerraformCfncompat doc comment). The test must log the terraform plan for B and C before applying.
 
 ## Timing caveats
 - S3 applies a new notification configuration eventually — AWS documents "about five minutes". `GetBucketNotificationConfiguration` is read-after-write consistent and is the assertion that proves merge semantics; delivery is only asserted after `waitForTargetLive` (≤6 min of warm-up probes) for the target the stage just deployed. A delivery-only failure is a harness timeout, not a merge failure.

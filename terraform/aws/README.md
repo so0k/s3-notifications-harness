@@ -37,8 +37,8 @@ $AWSV mise x -- terraform -chdir=stack-b destroy -var suffix=k3m9x1
 $AWSV mise x -- terraform -chdir=stack-a destroy -var suffix=k3m9x1
 ```
 
-`suffix` must match across all three roots, the `../awscc` scenario, and the awscdk suite for a
-given test run; `region` defaults to `us-east-1` and can be overridden with `-var region=...`.
+`suffix` must match across all three roots, the `../awscc` and `../cfncompat` scenarios, and the
+awscdk suite for a given test run; `region` defaults to `us-east-1` and can be overridden with `-var region=...`.
 See `../../CONTRACT.md` for the full cross-suite contract.
 
 ## Verify without AWS credentials

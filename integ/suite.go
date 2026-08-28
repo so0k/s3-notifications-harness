@@ -1,6 +1,6 @@
 // Package integ contains the s3-notifications-harness terratest (Go) suite:
-// it drives the same deploy/validate flow (see CONTRACT.md) against both the
-// awscdk/ and terraform/ suites via the Suite interface below, so
+// it drives the same deploy/validate flow (see CONTRACT.md) against the awscdk/
+// suite and each terraform/ scenario via the Suite interface below, so
 // harness_test.go's TestAwsCdk, TestTerraformAwscc, TestTerraformAws, and
 // TestTerraformCfncompat share one implementation.
 package integ
@@ -150,8 +150,8 @@ func (s *cdkSuite) Destroy(t *testing.T, x string) {
 
 // tfSuite drives terraform/<provider>/stack-<x> via terratest's terraform
 // module, where provider is "awscc" (hashicorp/awscc + hashicorp/aws), "aws"
-// (hashicorp/aws only), or "cfncompat" (hashicorp/aws + hashicorp/archive +
-// cdktn-io/cfncompat) -- see CONTRACT.md and terraform/README.md. Each
+// (hashicorp/aws only), or "cfncompat" (hashicorp/awscc + cdktn-io/cfncompat +
+// hashicorp/aws) -- see CONTRACT.md and terraform/README.md. Each
 // stack's *terraform.Options (and the temp dir terratest copies its module
 // into) is memoized on first use so later stages -- Plan, Outputs, Destroy,
 // or a redeploy -- reuse the same working directory and state, instead of
@@ -187,7 +187,7 @@ func terraformBinary() string {
 // dir, so the module's "${path.module}/../../../../lambda/index.js" (or, for
 // cfncompat's handler, "lambda/notifications-handler/index.py") and the
 // stack's "../modules/notification-target" source (or, for cfncompat,
-// "../../aws/modules/notification-target") both resolve unchanged)
+// "../../awscc/modules/notification-target") both resolve unchanged)
 // into a temp working dir the first time it's called for that stack.
 func (s *tfSuite) optionsFor(t *testing.T, x string) *terraform.Options {
 	s.mu.Lock()

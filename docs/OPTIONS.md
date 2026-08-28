@@ -4,10 +4,10 @@ Goal: turn the RED Terraform scenarios GREEN by polyfilling CloudFormation's
 `Custom::S3BucketNotifications` with `cfncompat_custom_resource` driving the AWS CDK
 handler (`index.py`, copied verbatim), then validate it with the same terratest flow.
 
-Evidence collected (2026-08-28): cfncompat 0.2.0 implements the full CFN custom-resource
+Evidence behind the choice: cfncompat 0.2.0 implements the full CFN custom-resource
 protocol (presigned `ResponseURL`, `StackId`, `OldResourceProperties`, Delete, replacement)
 and the CDK handler needs nothing it doesn't provide (`Managed` must be the string
-`"false"`). Its e2e suite has never executed against real AWS. `@cdktn/provider-cfncompat@1.0.0`
+`"false"`). Before this harness, that protocol engine had never run against real AWS. `@cdktn/provider-cfncompat@1.0.0`
 (peer `cdktn ^0.24`) exports `CustomResource` + provider functions and pins provider 0.2.0.
 TerraConstructs (cdktn 0.23, `@cdktn/provider-aws`) has a single authoritative
 `aws_s3_bucket_notification` and a TODO for the custom-resource approach.

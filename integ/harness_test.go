@@ -55,10 +55,11 @@ func TestTerraformAwscc(t *testing.T) {
 // isolates whether the RED behavior TestTerraformAwscc documents comes from mixing
 // awscc_s3_bucket's inline config with aws_s3_bucket_notification, or from
 // aws_s3_bucket_notification itself always being authoritative regardless of what owns
-// the bucket -- see terraform/README.md. Whether deploy B's *first* plan shows stack
-// A's existing target being dropped (vs. a refresh-driven diff only surfacing later, at
-// the stack-A re-plan after B and C) is exactly what running this side by side with
-// TestTerraformAwscc must answer; do not assume either outcome here.
+// the bucket -- see terraform/README.md. Expected: RED at the same stage and by the same
+// mechanism as TestTerraformAwscc, the singleton resource being authoritative no matter
+// which provider owns stack A's target. Neither scenario's B/C plan shows the removal:
+// the clobbering happens through another root's independent apply, so it only surfaces
+// later, as an in-place update on stack A's re-plan.
 func TestTerraformAws(t *testing.T) {
 	suffix := strings.ToLower(random.UniqueId())
 	region := awsRegion()
@@ -67,8 +68,9 @@ func TestTerraformAws(t *testing.T) {
 }
 
 // TestTerraformCfncompat runs the identical flow against terraform/cfncompat/, where
-// every stack -- including stack-a, which owns the bucket via a plain aws_s3_bucket --
-// attaches its notification target purely through a cfncompat_custom_resource driving
+// every stack -- including stack-a, which owns the bucket via an awscc_s3_bucket
+// carrying no notification_configuration block at all -- attaches its notification
+// target purely through a cfncompat_custom_resource driving
 // AWS CDK's own bucket-notifications Lambda handler in its "unmanaged" (merge) mode
 // (Managed = "false"), instead of through aws_s3_bucket_notification. Expected: fully
 // GREEN, unlike TestTerraformAwscc and TestTerraformAws -- each stack's custom resource

@@ -10,6 +10,8 @@ instead of merging with it.
 
 All three roots share `modules/notification-target` (results SQS queue, lambda role, lambda
 function, and the `s3.amazonaws.com` invoke permission), built entirely from `awscc_*` resources.
+`../cfncompat/`'s roots use this same module by relative path, so changes here affect that
+scenario too.
 
 ## Apply order (matches the `integ/` terratest flow)
 
@@ -41,8 +43,8 @@ $AWSV mise x -- terraform -chdir=stack-b destroy -var suffix=k3m9x1
 $AWSV mise x -- terraform -chdir=stack-a destroy -var suffix=k3m9x1
 ```
 
-`suffix` must match across all three roots, the `../aws` scenario, and the awscdk suite for a
-given test run; `region` defaults to `us-east-1` on every provider and can be overridden with
+`suffix` must match across all three roots, the `../aws` and `../cfncompat` scenarios, and the
+awscdk suite for a given test run; `region` defaults to `us-east-1` on every provider and can be overridden with
 `-var region=...`. See `../../CONTRACT.md` for the full cross-suite contract.
 
 ## Verify without AWS credentials
