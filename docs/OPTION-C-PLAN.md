@@ -5,6 +5,14 @@ notifications to one bucket — including imported buckets — with AWS CDK sema
 `cfncompat_custom_resource` driving CDK's `notifications-resource-handler` verbatim. Validated
 end-to-end by a sixth harness target built from a local `pnpm package` tarball.
 
+**Status: built.** Options A, B and C are all GREEN against real AWS
+(`TestTerraformCfncompat`, `TestCdktn`, `TestTcons` — see [RESULTS.md](RESULTS.md)); the port
+lives on `feat/cfncompat-custom-resource` in `terraconstructs/base`, consumed here as a local
+tarball. TerraConstructs' own integ target `bucket-notifications-cross-stack` cannot run yet:
+its driver uses OpenTofu and `registry.opentofu.org` does not carry `cdktn-io/cfncompat`.
+The rest of this document is the design as implemented; the file-by-file plans it was executed
+from are under [tcons-plans/](tcons-plans/README.md).
+
 ## Shape of the change (base repo)
 
 1. **Dependency** — `.projenrc.ts`: `@cdktn/provider-cfncompat@^1.0.0` in `peerDeps`, exact
@@ -42,7 +50,7 @@ end-to-end by a sixth harness target built from a local `pnpm package` tarball.
   `@cdktn/provider-aws`, `@cdktn/provider-cfncompat`): stack A `new Bucket` +
   `addEventNotification(..., { prefix: "a/" })` with the custom-resource mode; B/C
   `Bucket.fromBucketName(...)` + `addEventNotification`; outputs per CONTRACT.md.
-- `integ/`: `TestTcons` (sixth target, `cliSuite` with `npx cdktn`) — expected GREEN.
+- `integ/`: `TestTcons` (sixth target, `tsSuite` shelling out to `npx cdktn`).
 
 ## How to drive it
 

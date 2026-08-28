@@ -305,13 +305,13 @@ func (s *tsSuite) Destroy(t *testing.T, x string) {
 }
 
 // ---------------------------------------------------------------------------
-// cliSuite -- shared by the two CLI-driven suites (cdkSuite, cdktnSuite)
+// cliSuite -- shared by the CLI-driven suites (cdkSuite, tsSuite)
 // ---------------------------------------------------------------------------
 
-// cliSuite is what the cdk and cdktn suites have in common: one `npx <tool>` CLI
-// invoked from a sibling directory of integ/ (where `go test` runs), and a JSON
-// outputs file per stack. tfSuite shares none of it -- it goes through terratest's
-// terraform module rather than a CLI.
+// cliSuite is what cdkSuite and tsSuite have in common: one `npx <tool>` CLI invoked
+// from a sibling directory of integ/ (where `go test` runs), and a JSON outputs file
+// per stack. tfSuite shares none of it -- it goes through terratest's terraform module
+// rather than a CLI.
 type cliSuite struct {
 	tool    string
 	workDir string

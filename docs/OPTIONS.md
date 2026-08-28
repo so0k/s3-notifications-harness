@@ -10,8 +10,9 @@ and the CDK handler needs nothing it doesn't provide (`Managed` must be the stri
 `"false"`); this harness is that protocol engine's only exercise against real AWS.
 `@cdktn/provider-cfncompat@1.0.0` (peer `cdktn ^0.24`) exports `CustomResource` + provider
 functions and pins provider 0.2.0.
-TerraConstructs (cdktn 0.23, `@cdktn/provider-aws`) has a single authoritative
-`aws_s3_bucket_notification` and a TODO for the custom-resource approach.
+TerraConstructs (`@cdktn/provider-aws`) had a single authoritative
+`aws_s3_bucket_notification` and a TODO for the custom-resource approach — that TODO is what
+Option C resolves.
 
 ## Status
 
@@ -19,7 +20,7 @@ TerraConstructs (cdktn 0.23, `@cdktn/provider-aws`) has a single authoritative
 |---|---|
 | A — `terraform/cfncompat/` | built; `TestTerraformCfncompat` GREEN |
 | B — `cdktn/` app | built; `TestCdktn` GREEN |
-| C — TerraConstructs L2 | outstanding; the remaining work, now unblocked by A and B |
+| C — TerraConstructs L2 | built; `TestTcons` GREEN (`tcons/`, docs/OPTION-C-PLAN.md) |
 | D — native Go merge resource | rejected |
 
 ## Option A — HCL scenario `terraform/cfncompat/` (spike first)
@@ -50,8 +51,8 @@ Resolve the TODO in `~/tcons/base/src/aws/storage/bucket.ts`: new `BucketNotific
 implementation using `@cdktn/provider-cfncompat` (new peer dep in `.projenrc.ts`), bundling
 the handler via `Code.fromInline` (python) or an asset.
 - Pros: real user-facing API parity with AWS CDK; imported buckets get notifications.
-- Cons: largest scope (jsii, peer-dep/publish plumbing, tcons is on cdktn 0.23 vs binding peer
-  ^0.24, provider-aws only); mixes library work into a validation harness.
+- Cons: largest scope (jsii, peer-dep/publish plumbing, provider-aws only); mixes library work
+  into a validation harness.
 
 ## Option D — native Go merge resource in cfncompat (no Lambda)
 `cfncompat_s3_bucket_notification_target` implemented in the provider: Get → merge own
@@ -63,4 +64,5 @@ entry (Id-prefixed) → Put, with Terraform state CRUD.
 ## Ordering rationale
 A before B: A proves the protocol engine on real AWS as the fourth terratest target, B then
 ports the same three stacks to cdktn + the binding as the fifth, so any regression between
-them is attributable to a single layer. C builds on both; D is rejected outright.
+them is attributable to a single layer. C, the sixth, builds on both — a failure there with A
+and B GREEN points at the TerraConstructs port rather than at cfncompat. D is rejected outright.

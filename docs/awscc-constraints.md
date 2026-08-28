@@ -18,6 +18,7 @@ start in the logs:
 | terraform + awscc | 3m58s | 27m27s |
 | terraform + awscc + cfncompat | 4m06s | 23m26s |
 | cdktn + awscc + cfncompat | 3m40s | 21m33s |
+| cdktn + TerraConstructs (hashicorp/aws) + cfncompat | 2m00s | 19m55s |
 
 Measure/reproduce: run any suite (`aws-vault exec --no-session tcons-vincent -- make -C integ
 test-<target>`), then

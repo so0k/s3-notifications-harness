@@ -1,9 +1,8 @@
 # Stack A owns the shared bucket and its own notification target (prefix "a/"). This root is
 # hashicorp/awscc only -- no hashicorp/aws anywhere, not even indirectly (modules/notification-target
 # derives the lambda permission's source_account from the lambda's own arn instead of a
-# data "aws_caller_identity" lookup). Stack-b and stack-c still need hashicorp/aws for
-# aws_s3_bucket_notification (see their main.tf header comments); stack-a has no such need since
-# its own target is inline on the bucket resource.
+# data "aws_caller_identity" lookup) -- stack-a's own target is inline on the bucket resource,
+# so it never needs stack-b/c's aws_s3_bucket_notification.
 #
 # awscc_s3_bucket's inline notification_configuration must reference the lambda's arn, and the
 # lambda permission must reference the bucket's arn -> a naive wiring creates a resource cycle

@@ -37,9 +37,10 @@ aws-vault exec --no-session tcons-vincent -- make -C integ test
 ## Docs
 
 - [CONTRACT.md](CONTRACT.md) — cross-suite contract: names, inputs, outputs, test flow (single source of truth)
-- [docs/OPTIONS.md](docs/OPTIONS.md) — the options considered for the cfncompat polyfill, which of them are built (`terraform/cfncompat/`, `cdktn/`), and what is left
+- [docs/OPTIONS.md](docs/OPTIONS.md) — the options considered for the cfncompat polyfill, which of them are built (A/B/C: `terraform/cfncompat/`, `cdktn/`, `tcons/`) and which was rejected
 - [docs/RESULTS.md](docs/RESULTS.md) — index of the append-only per-run result documents under `docs/results/`
 - [awscdk/README.md](awscdk/README.md), [terraform/README.md](terraform/README.md), [cdktn/README.md](cdktn/README.md), [tcons/README.md](tcons/README.md), [integ/README.md](integ/README.md) — per-suite usage
 - [docs/awscc-constraints.md](docs/awscc-constraints.md) — awscc behaviours hit during the runs, with evidence
 - [docs/awscc-gaps.md](docs/awscc-gaps.md) — what awscc structurally lacks and what would fill it
-- [docs/OPTION-C-PLAN.md](docs/OPTION-C-PLAN.md) — proposed TerraConstructs port of the CDK custom-resource notifications
+- [docs/cfn-intrinsics-survey.md](docs/cfn-intrinsics-survey.md) — the CFN pseudo parameters/intrinsics `aws-cdk-lib` uses, their TF equivalents, and the cfncompat backlog
+- [docs/OPTION-C-PLAN.md](docs/OPTION-C-PLAN.md) — the TerraConstructs port of the CDK custom-resource notifications (Option C, built and GREEN), with [docs/tcons-plans/](docs/tcons-plans/README.md) as its file-by-file implementation plans
