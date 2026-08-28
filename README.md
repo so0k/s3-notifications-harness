@@ -19,17 +19,7 @@ Three stacks per suite:
 1. `GetBucketNotificationConfiguration` still contains every previously-registered target
 2. uploading `a/x`, `b/x`, `c/x` delivers exactly one event to the corresponding stack's results SQS queue
 
-Every sample lambda (`lambda/index.mjs`) forwards its S3 events to a per-stack SQS results queue.
-
-## Observed results (2026-08-28, account 694710432912, us-east-1)
-
-| Stage | awscdk | terraform 1.15.9 + awscc 1.98 |
-|---|---|---|
-| deploy A → config ⊇ {a} | ✅ | ✅ |
-| deploy B → config ⊇ {a,b} | ✅ | ❌ config = {b} — `aws_s3_bucket_notification` plan only says "will be created", A's target is dropped silently |
-| deploy C → config ⊇ {a,b,c} | ✅ | ❌ config = {c} |
-| re-deploy A → config ⊇ {a,b,c} | ✅ (no-op) | ❌ plan: `awscc_s3_bucket.bucket will be updated in-place` → config = {a} |
-| destroy B → config = {a,c} | ✅ | ❌ config = {} (destroying B's authoritative resource wipes everything) |
+Every sample lambda (`lambda/index.js`) forwards its S3 events to a per-stack SQS results queue.
 
 CDK only passes because `cdk.json` enables `@aws-cdk/aws-s3:keepNotificationInImportedBucket`; without it the owning stack's handler takes the `Managed` path and overwrites the whole configuration on every deploy, exactly like Terraform.
 
@@ -39,3 +29,9 @@ CDK only passes because `cdk.json` enables `@aws-cdk/aws-s3:keepNotificationInIm
 mise install            # terraform 1.15.9, go, node 24, aws-cli
 aws-vault exec --no-session tcons-vincent -- make -C integ test
 ```
+
+## Docs
+
+- [CONTRACT.md](CONTRACT.md) — cross-suite contract: names, inputs, outputs, test flow (single source of truth)
+- [docs/RESULTS.md](docs/RESULTS.md) — append-only log of observed run results
+- [awscdk/README.md](awscdk/README.md), [terraform/README.md](terraform/README.md), [integ/README.md](integ/README.md) — per-suite usage

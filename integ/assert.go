@@ -57,57 +57,60 @@ type ownerUpload struct {
 	queueURL string
 }
 
+// probeUntilDelivered uploads throwaway probe objects named "<keyPrefix><attempt>.txt" --
+// keyPrefix starts with "<owner>/", so every probe lands under that owner's notification
+// filter prefix and all of an owner's probes share one queue-side prefix. Returns true as
+// soon as the owner's results queue echoes back any of them, so a probe that arrived late
+// still counts on a later attempt's poll.
+func probeUntilDelivered(t *testing.T, region, bucket string, o ownerUpload, keyPrefix string, attempts, waitSeconds int) bool {
+	t.Helper()
+
+	for attempt := 1; attempt <= attempts; attempt++ {
+		key := fmt.Sprintf("%s%d.txt", keyPrefix, attempt)
+		harnessaws.UploadS3File(t, region, bucket, key, "s3-notifications-harness probe "+key)
+		if waitForKey(t, region, o.queueURL, bucket, keyPrefix, waitSeconds) {
+			t.Logf("owner %s: %s* delivered on attempt %d/%d", o.owner, keyPrefix, attempt, attempts)
+			return true
+		}
+		t.Logf("owner %s: probe %s not delivered within %ds (attempt %d/%d)", o.owner, key, waitSeconds, attempt, attempts)
+	}
+	return false
+}
+
 // waitForTargetLive absorbs S3's propagation window for a freshly written notification
 // configuration -- AWS documents "about five minutes" before changes take effect, and
-// objects put before then are silently not delivered. It uploads throwaway
-// "<owner>/warmup-<n>.txt" probes every 20s for up to 6 minutes until the owner's results
-// queue echoes one. Call it right after deploying the stack that adds/keeps that target;
-// assertDelivery can then stay short and strict. Non-fatal: see assertNotificationTargets.
+// objects put before then are silently not delivered. Call it right after deploying the
+// stack that adds/keeps that target; assertDelivery can then stay short and strict.
+// Non-fatal: see assertNotificationTargets.
 func waitForTargetLive(t *testing.T, region, bucket string, o ownerUpload) {
 	t.Helper()
 
 	const attempts, waitSeconds = 18, 20
-	for attempt := 1; attempt <= attempts; attempt++ {
-		key := fmt.Sprintf("%s/warmup-%d.txt", o.owner, attempt)
-		harnessaws.UploadS3File(t, region, bucket, key, "s3-notifications-harness warmup probe")
-		if waitForKey(t, region, o.queueURL, bucket, o.owner+"/warmup-", waitSeconds) {
-			t.Logf("owner %s: target live after %d warmup probe(s)", o.owner, attempt)
-			return
-		}
+	if probeUntilDelivered(t, region, bucket, o, o.owner+"/warmup-", attempts, waitSeconds) {
+		return
 	}
 	assert.Fail(t, "target never went live", "owner %s's results queue (%s) received no warmup probe within %ds", o.owner, o.queueURL, attempts*waitSeconds)
 }
 
-// assertDelivery proves each owner's target is live now: it uploads "<owner>/<n>.txt" and
-// expects the owner's results queue to echo it back within a short window. Targets are
-// expected to have been warmed by waitForTargetLive after their deploy; a single retry
-// covers a probe lost at the tail of that window. Non-fatal: see assertNotificationTargets.
+// assertDelivery proves each owner's target is live now, uploading round n's probes under
+// "<owner>/<n>-". Targets are expected to have been warmed by waitForTargetLive after their
+// deploy, so the window here is short; the second attempt only covers a probe lost at the
+// tail of that window. Non-fatal: see assertNotificationTargets.
 func assertDelivery(t *testing.T, region, bucket string, n int, owners []ownerUpload) {
 	t.Helper()
 
 	const attempts, waitSeconds = 2, 45
 	for _, o := range owners {
-		delivered := false
-		for attempt := 1; attempt <= attempts && !delivered; attempt++ {
-			key := fmt.Sprintf("%s/%d.txt", o.owner, n)
-			if attempt > 1 {
-				key = fmt.Sprintf("%s/%d-r%d.txt", o.owner, n, attempt)
-			}
-			harnessaws.UploadS3File(t, region, bucket, key, fmt.Sprintf("s3-notifications-harness payload: %s", key))
-			delivered = waitForKey(t, region, o.queueURL, bucket, fmt.Sprintf("%s/%d", o.owner, n), waitSeconds)
-			if !delivered {
-				t.Logf("owner %s: probe %s not delivered within %ds (attempt %d/%d)", o.owner, key, waitSeconds, attempt, attempts)
-			}
-		}
-		assert.True(t, delivered, "owner %s's results queue (%s) never received any %s/%d* probe across %d attempts", o.owner, o.queueURL, o.owner, n, attempts)
+		keyPrefix := fmt.Sprintf("%s/%d-", o.owner, n)
+		assert.True(t, probeUntilDelivered(t, region, bucket, o, keyPrefix, attempts, waitSeconds),
+			"owner %s's results queue (%s) never received any %s* probe across %d attempts", o.owner, o.queueURL, keyPrefix, attempts)
 	}
 }
 
-// waitForKey polls queueURL, draining (deleting) every message it reads along the way,
-// until it sees one whose body matches bucket and a key starting with wantKey (probe
-// retries share that prefix) or timeoutSeconds elapses. Returns
-// false on timeout or a queue/receive error (logged, not asserted -- the caller decides
-// whether that's fatal).
+// waitForKey polls queueURL, draining (deleting) every message it reads along the way, until
+// it sees one whose body matches bucket and a key starting with wantKey, or timeoutSeconds
+// elapses. Returns false on timeout or a queue/receive error (logged, not asserted -- the
+// caller decides whether that's fatal).
 func waitForKey(t *testing.T, region, queueURL, bucket, wantKey string, timeoutSeconds int) bool {
 	t.Helper()
 
@@ -140,11 +143,10 @@ func waitForKey(t *testing.T, region, queueURL, bucket, wantKey string, timeoutS
 }
 
 // assertNoCrossDelivery does a single short (15s) poll on queueURL, checking it does NOT
-// receive any key under unexpectedPrefix -- e.g. that stack B's target doesn't also receive a/-prefixed
-// events meant only for stack A. Kept deliberately cheap (one queue, one short poll, called
-// at most once per validate stage) rather than checking every owner pair at every stage:
-// that would multiply total suite runtime for marginal extra signal on top of the
-// structural assertNotificationTargets check above.
+// receive any key under unexpectedPrefix -- e.g. that stack B's target doesn't also receive
+// a/-prefixed events meant only for stack A. Deliberately cheap (one queue, one short poll,
+// at most once per validate stage): checking every owner pair at every stage would multiply
+// suite runtime for marginal signal beyond the structural assertNotificationTargets check.
 func assertNoCrossDelivery(t *testing.T, region, queueURL, bucket, unexpectedPrefix string) {
 	t.Helper()
 

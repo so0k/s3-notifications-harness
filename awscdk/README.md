@@ -31,20 +31,20 @@ mise x -- npx cdk synth -c suffix=<suffix> --no-lookups
 ## Deploy (requires AWS credentials)
 
 ```sh
-aws-vault exec tcons-vincent -- mise x -- npx cdk deploy S3nHarnessA-<suffix> -c suffix=<suffix> \
+aws-vault exec --no-session tcons-vincent -- mise x -- npx cdk deploy S3nHarnessA-<suffix> -c suffix=<suffix> \
   --require-approval never --outputs-file outputs-a.json
 
-aws-vault exec tcons-vincent -- mise x -- npx cdk deploy S3nHarnessB-<suffix> -c suffix=<suffix> \
+aws-vault exec --no-session tcons-vincent -- mise x -- npx cdk deploy S3nHarnessB-<suffix> -c suffix=<suffix> \
   --require-approval never --outputs-file outputs-b.json
 
-aws-vault exec tcons-vincent -- mise x -- npx cdk deploy S3nHarnessC-<suffix> -c suffix=<suffix> \
+aws-vault exec --no-session tcons-vincent -- mise x -- npx cdk deploy S3nHarnessC-<suffix> -c suffix=<suffix> \
   --require-approval never --outputs-file outputs-c.json
 ```
 
 Re-deploying A (to prove it still merges B/C's targets instead of overwriting them):
 
 ```sh
-aws-vault exec tcons-vincent -- mise x -- npx cdk deploy S3nHarnessA-<suffix> -c suffix=<suffix> \
+aws-vault exec --no-session tcons-vincent -- mise x -- npx cdk deploy S3nHarnessA-<suffix> -c suffix=<suffix> \
   --require-approval never --outputs-file outputs-a.json
 ```
 
@@ -53,8 +53,8 @@ aws-vault exec tcons-vincent -- mise x -- npx cdk deploy S3nHarnessA-<suffix> -c
 Destroy in reverse dependency order (B, C before A) since A owns the bucket:
 
 ```sh
-aws-vault exec tcons-vincent -- mise x -- npx cdk destroy S3nHarnessB-<suffix> S3nHarnessC-<suffix> -c suffix=<suffix> -f
-aws-vault exec tcons-vincent -- mise x -- npx cdk destroy S3nHarnessA-<suffix> -c suffix=<suffix> -f
+aws-vault exec --no-session tcons-vincent -- mise x -- npx cdk destroy S3nHarnessB-<suffix> S3nHarnessC-<suffix> -c suffix=<suffix> -f
+aws-vault exec --no-session tcons-vincent -- mise x -- npx cdk destroy S3nHarnessA-<suffix> -c suffix=<suffix> -f
 ```
 
 Stack A's bucket has `RemovalPolicy.DESTROY` + `autoDeleteObjects: true`, so

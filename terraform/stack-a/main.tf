@@ -13,7 +13,7 @@ module "target" {
   suffix      = var.suffix
   owner       = "a"
   bucket_name = "s3n-harness-${var.suffix}"
-  # Computed string, not `awscc_s3_bucket.bucket.arn` -- see note above re: the cycle.
+  # Literal string, not `awscc_s3_bucket.bucket.arn`: breaks the cycle described above.
   bucket_arn = "arn:aws:s3:::s3n-harness-${var.suffix}"
 }
 
@@ -38,6 +38,4 @@ resource "awscc_s3_bucket" "bucket" {
   # Ensure the permission allowing S3 to invoke the lambda exists before the bucket's
   # notification configuration is applied.
   depends_on = [module.target]
-
-  lifecycle {}
 }

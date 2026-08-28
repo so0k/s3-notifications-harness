@@ -25,7 +25,7 @@ type Suite interface {
 	// Name identifies the suite for logging (e.g. "cdk", "terraform").
 	Name() string
 	// Deploy applies stack x ("a", "b", or "c"). Failures are fatal
-	// (require semantics), per CONTRACT.md / task instructions.
+	// (require semantics), per CONTRACT.md.
 	Deploy(t *testing.T, x string)
 	// Plan returns the plan/diff output for stack x without applying it.
 	// The caller is expected to t.Log the result.
@@ -95,6 +95,17 @@ func (s *cdkSuite) Plan(t *testing.T, x string) string {
 	return out
 }
 
+// cdkOutputKeys maps the CDK app's CfnOutput logical ids to CONTRACT.md's canonical output
+// keys. CloudFormation logical ids must be alphanumeric ([A-Za-z0-9]) -- snake_case ids are
+// rejected at CreateStack/UpdateStack validation -- so the app emits PascalCase and this
+// adapter translates back for the shared assertion helpers.
+var cdkOutputKeys = map[string]string{
+	"BucketName": "bucket_name",
+	"LambdaArn":  "lambda_arn",
+	"QueueUrl":   "queue_url",
+	"Owner":      "owner",
+}
+
 func (s *cdkSuite) Outputs(t *testing.T, x string) map[string]string {
 	name := s.stackName(x)
 	outFile := s.outputsFile(x)
@@ -108,24 +119,12 @@ func (s *cdkSuite) Outputs(t *testing.T, x string) map[string]string {
 	stackOutputs, ok := all[name]
 	require.True(t, ok, "no outputs recorded for stack %s in %s (keys present: %v)", name, outFile, mapKeys(all))
 
-	// CONTRACT.md lines 25-30: CloudFormation Output logical ids must be
-	// alphanumeric, so the CDK app uses PascalCase ids (BucketName, LambdaArn,
-	// QueueUrl, Owner). Translate them back to the canonical snake_case keys
-	// the shared assertion helpers expect.
 	out := make(map[string]string, len(stackOutputs))
 	for k, v := range stackOutputs {
-		switch k {
-		case "BucketName":
-			out["bucket_name"] = v
-		case "LambdaArn":
-			out["lambda_arn"] = v
-		case "QueueUrl":
-			out["queue_url"] = v
-		case "Owner":
-			out["owner"] = v
-		default:
-			out[k] = v
+		if canonical, ok := cdkOutputKeys[k]; ok {
+			k = canonical
 		}
+		out[k] = v
 	}
 	return out
 }

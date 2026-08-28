@@ -11,13 +11,19 @@ function, and the `s3.amazonaws.com` invoke permission).
 
 ## Apply order (matches the `integ/` terratest flow)
 
+`--no-session` is required: the `awscc_*` IAM resources go through Cloud Control, which
+rejects `GetSessionToken` credentials.
+
 ```sh
-cd terraform/stack-a && mise x -- terraform init && mise x -- terraform apply -var suffix=k3m9x1
-cd terraform/stack-b && mise x -- terraform init && mise x -- terraform apply -var suffix=k3m9x1
-cd terraform/stack-c && mise x -- terraform init && mise x -- terraform apply -var suffix=k3m9x1
+export AWSV="aws-vault exec --no-session tcons-vincent --"
+
+cd terraform
+$AWSV mise x -- terraform -chdir=stack-a init && $AWSV mise x -- terraform -chdir=stack-a apply -var suffix=k3m9x1
+$AWSV mise x -- terraform -chdir=stack-b init && $AWSV mise x -- terraform -chdir=stack-b apply -var suffix=k3m9x1
+$AWSV mise x -- terraform -chdir=stack-c init && $AWSV mise x -- terraform -chdir=stack-c apply -var suffix=k3m9x1
 
 # re-apply A: merges nothing new, but demonstrates A's inline config is untouched by B/C
-cd terraform/stack-a && mise x -- terraform apply -var suffix=k3m9x1
+$AWSV mise x -- terraform -chdir=stack-a apply -var suffix=k3m9x1
 
 # expected RED point: `terraform plan` for stack-b (and stack-c) shows
 # aws_s3_bucket_notification replacing the bucket's whole notification_configuration,
@@ -28,19 +34,21 @@ Destroy in reverse (empty the bucket first — `stack-a` owns it and does not en
 `force_destroy`; the terratest harness does this via the AWS SDK before destroying):
 
 ```sh
-cd terraform/stack-c && mise x -- terraform destroy -var suffix=k3m9x1
-cd terraform/stack-b && mise x -- terraform destroy -var suffix=k3m9x1
-cd terraform/stack-a && mise x -- terraform destroy -var suffix=k3m9x1
+$AWSV mise x -- terraform -chdir=stack-c destroy -var suffix=k3m9x1
+$AWSV mise x -- terraform -chdir=stack-b destroy -var suffix=k3m9x1
+$AWSV mise x -- terraform -chdir=stack-a destroy -var suffix=k3m9x1
 ```
 
 `suffix` must match across all three roots and the awscdk suite for a given test run; `region`
 defaults to `us-east-1` on every provider and can be overridden with `-var region=...`.
+See `../CONTRACT.md` for the full cross-suite contract.
 
 ## Verify without AWS credentials
 
 ```sh
-cd terraform/stack-a && mise x -- terraform init -backend=false && mise x -- terraform validate
-cd terraform/stack-b && mise x -- terraform init -backend=false && mise x -- terraform validate
-cd terraform/stack-c && mise x -- terraform init -backend=false && mise x -- terraform validate
-cd terraform && mise x -- terraform fmt -check -recursive
+cd terraform
+for x in a b c; do
+  mise x -- terraform -chdir=stack-$x init -backend=false && mise x -- terraform -chdir=stack-$x validate
+done
+mise x -- terraform fmt -check -recursive
 ```
