@@ -137,3 +137,9 @@ inline `awscc_s3_bucket` block onto a standalone `aws_s3_bucket_notification` re
 
 Raw `go test` output for this run: `../../test-reports/awscc-20260828.log`,
 `../../test-reports/aws-20260828.log`.
+
+## Re-run after making the awscc scenario pure-awscc (stack A awscc only; `data.awscc_s3_bucket` in B/C; account id from the lambda ARN)
+
+`TestTerraformAwscc` FAIL (1724s) — identical RED profile ({a} → {b} → {c} → {a} → {}), confirming
+`data "awscc_s3_bucket" { id = <name> }` and `split(":", awscc_lambda_function.arn)[4]` work in place
+of the hashicorp/aws data sources.
