@@ -186,3 +186,7 @@ Same stage results as the cfncompat HCL scenario (A→B→C merge, A re-deploy n
 Two earlier attempts failed on transient AWS errors unrelated to the app (STS `GetCallerIdentity` 408;
 Cloud Control `InternalFailure` creating `AWS::IAM::Role`) — the driver now retries a deploy once on the
 latter.
+
+Follow-up run after switching IAM documents to `Fn.jsonencode`: **PASS** (1293s); stack A's re-plan is now a
+no-op (the previous run showed two `awscc_iam_role` "whitespace changes" from `JSON.stringify` vs IAM's
+normalised JSON — cosmetic, unrelated to the bucket, which showed no drift in both runs).
