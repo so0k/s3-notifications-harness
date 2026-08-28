@@ -52,11 +52,35 @@ upstream test names, `tools/cfn-scan.mjs` on the `notifications-resource` subtre
 dedicated workflow: opus plan → sonnet implement in a base worktree → compile/test loop →
 opus verify against CDK source → harness live run.
 
-## Decisions to confirm
+## Decisions taken
 
-- Owner-stack default: native resource (status quo) with opt-in custom resource — or custom
-  resource whenever the bucket is shared? Proposed: opt-in flag; imported buckets always CR.
-- Response bucket: per-stack singleton `aws_s3_bucket { force_destroy }` (proposed) vs
-  requiring `custom_resource_bucket` on the provider.
-- Handler language: keep CDK's Python handler verbatim (proposed; Python inline via
-  `Code.fromInline` already works in tcons) vs a Node port.
+- **Mode selection = context key only**, `@terraconstructs/aws-s3:keepNotificationInImportedBucket`,
+  read with `node.tryGetContext` (tcons idiom; no `FeatureFlags` port). Imported buckets always
+  use the custom resource; owned buckets use the native `aws_s3_bucket_notification` unless the
+  key is on. Switching an existing owned bucket is a documented migration step (the native
+  resource's destroy wipes the whole configuration and has no ordering guarantee against the
+  custom resource's Put).
+- **Core custom-resource support lands first**, ported from `aws-cdk-lib/core`:
+  - `src/aws/custom-resource.ts` — `CustomResource` L2 (props `serviceToken`, `properties`,
+    `resourceType`, `pascalCaseProperties`, `serviceTimeout`; port `renderResourceType` /
+    `uppercaseProperties` verbatim) wrapping `@cdktn/provider-cfncompat` `CustomResource`;
+    `stackId = AwsStack.gridUUID` (stable per stack, the S3 handler's id prefix),
+    `logicalResourceId = stack.uniqueResourceName(this)`, `getAtt` = `data.lookup(name)`.
+    No `removalPolicy` (no CFN DeletionPolicy equivalent).
+  - `AwsStack.cfncompatProvider` lazy singleton (mirrors `archiveProvider`; region defaults to
+    the stack's aws provider region) and `AwsStack.customResourceResponseBucket`: a per-stack
+    lazily created `Bucket { forceDestroy: true }` (`CustomResourceResponsesBucket`, name via
+    `uniqueResourceNamePrefix`, 63 chars) instantiated by the first `CustomResource` in the
+    stack, skipped when the provider was configured with `customResourceBucket`. No IAM: the
+    Terraform caller does the presigned PUT/GET, the handler uses the presigned URL.
+  - `src/aws/custom-resource-handler.ts` — handler singleton in the `NotificationsResourceHandler`
+    shape (well-known id + `tryFindChild`, `getOrCreate(scope, uniqueId, factory)`), built from
+    tcons `iam.Role` + `compute.LambdaFunction` + `Code` with `addToRolePolicy`. CDK's
+    `CustomResourceProviderBase` raw-Cfn machinery and the `custom-resources` provider framework
+    (`onEvent`/`isComplete` state machine) are not ported — Terraform applies are synchronous.
+  - Tests: port `core/test/custom-resource.test.ts` and the singleton/`getOrCreate` cases of
+    `core/test/custom-resource-provider/custom-resource-provider.test.ts`.
+- **S3 notifications** then build on that core: `NotificationsResourceHandler` (Python handler
+  verbatim, timeout 300, per-bucket Get/Put policy) + `BucketNotificationsCustomResource`
+  (`Managed: "false"`, `dependsOn` destination permissions), selected in
+  `BucketBase.withNotifications()` per the context key / import rule above.
