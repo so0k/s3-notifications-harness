@@ -1,0 +1,20 @@
+{
+  "name": "s3n-harness-awscdk",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "aws-cdk": "2.1139.0",
+    "typescript": "~5.6.3"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.267.0",
+    "constructs": "^10.0.0",
+    "tsx": "^4.19.2"
+  }
+}

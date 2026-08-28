@@ -1,0 +1,9 @@
+[tools]
+terraform = "1.15.9"
+go = "1.25.12"
+node = "24"
+aws-cli = "latest"
+
+[env]
+AWS_REGION = "us-east-1"
+AWS_DEFAULT_REGION = "us-east-1"
