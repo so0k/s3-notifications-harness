@@ -7,12 +7,10 @@ import { S3Bucket } from '@cdktn/provider-awscc/lib/s3-bucket';
 import { NotificationTarget } from './lib/notification-target';
 import { BucketNotificationsPolyfill } from './lib/bucket-notifications-polyfill';
 
-// Fifth terratest target (Option B, docs/OPTIONS.md): cdktn TypeScript app using
-// @cdktn/provider-cfncompat's CustomResource, porting the same three stacks as
-// terraform/cfncompat/ (HCL) 1:1 -- same resource names/shapes, same
-// resource_properties structure, same Managed = "false" string, same handler
-// timeout 300, response bucket force_destroy. See CONTRACT.md and
-// docs/OPTIONS.md Option B.
+// Deliberately a 1:1 port of terraform/cfncompat/ (same resource names and shapes),
+// so a divergence between TestCdktn and TestTerraformCfncompat isolates the
+// construct/binding/CLI layer from the cfncompat provider itself.
+// See CONTRACT.md and docs/OPTIONS.md (Option B).
 
 const suffixEnv = process.env.SUFFIX;
 if (!suffixEnv) {

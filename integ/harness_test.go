@@ -102,7 +102,7 @@ func TestCdktn(t *testing.T) {
 	runHarness(t, NewCdktnSuite(suffix), suffix, region)
 }
 
-// runHarness drives CONTRACT.md's integ/ flow identically for all four suites:
+// runHarness drives CONTRACT.md's integ/ flow identically for all five suites:
 //
 //	deploy A      -> assert config includes {a};       upload a/1          -> queue a receives
 //	deploy B      -> assert config includes {a,b};     upload a/2,b/2      -> queues a,b receive

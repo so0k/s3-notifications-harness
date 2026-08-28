@@ -7,10 +7,20 @@ handler (`index.py`, copied verbatim), then validate it with the same terratest 
 Evidence behind the choice: cfncompat 0.2.0 implements the full CFN custom-resource
 protocol (presigned `ResponseURL`, `StackId`, `OldResourceProperties`, Delete, replacement)
 and the CDK handler needs nothing it doesn't provide (`Managed` must be the string
-`"false"`). Before this harness, that protocol engine had never run against real AWS. `@cdktn/provider-cfncompat@1.0.0`
-(peer `cdktn ^0.24`) exports `CustomResource` + provider functions and pins provider 0.2.0.
+`"false"`); this harness is that protocol engine's only exercise against real AWS.
+`@cdktn/provider-cfncompat@1.0.0` (peer `cdktn ^0.24`) exports `CustomResource` + provider
+functions and pins provider 0.2.0.
 TerraConstructs (cdktn 0.23, `@cdktn/provider-aws`) has a single authoritative
 `aws_s3_bucket_notification` and a TODO for the custom-resource approach.
+
+## Status
+
+| Option | State |
+|---|---|
+| A — `terraform/cfncompat/` | built; `TestTerraformCfncompat` GREEN |
+| B — `cdktn/` app | built; `TestCdktn` GREEN |
+| C — TerraConstructs L2 | outstanding; the remaining work, now unblocked by A and B |
+| D — native Go merge resource | rejected |
 
 ## Option A — HCL scenario `terraform/cfncompat/` (spike first)
 Fourth sibling next to `awscc/` and `aws/`, built on the same `hashicorp/awscc` resources as
@@ -50,7 +60,7 @@ entry (Id-prefixed) → Put, with Terraform state CRUD.
 - Cons: diverges from cfncompat's purpose (polyfill the CFN deployment model, not
   re-implement each custom resource); does nothing for the hundreds of other CDK handlers.
 
-## Recommendation
-A → B, staged: A proves the protocol engine on real AWS in a day and becomes the fourth
-terratest target; B then ports the same three stacks to cdktn + the binding (fifth target),
-so any regression is attributable. C is the follow-on once A/B are green; D is rejected.
+## Ordering rationale
+A before B: A proves the protocol engine on real AWS as the fourth terratest target, B then
+ports the same three stacks to cdktn + the binding as the fifth, so any regression between
+them is attributable to a single layer. C builds on both; D is rejected outright.

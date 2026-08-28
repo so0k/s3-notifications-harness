@@ -133,11 +133,9 @@ export class BucketNotificationsPolyfill extends Construct {
             },
           ],
         },
-        // Must be the *string* "false" (not a bool) -- the handler does
-        // props.get('Managed', 'true').lower() == 'true', so only a string survives the
-        // round trip through the request event's JSON the way CDK's own synthesis emits
-        // it. "false" (unmanaged/merge mode) is what makes each stack's apply merge with
-        // the others instead of clobbering them.
+        // Must be the *string* "false", not a bool: the handler does
+        // props.get('Managed', 'true').lower() == 'true'. Unmanaged means merge into the
+        // bucket's existing configuration rather than replace it.
         Managed: 'false',
       },
       // The handler must be able to invoke s3:Get/PutBucketNotification before cfncompat

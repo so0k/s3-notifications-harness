@@ -50,7 +50,7 @@ CONTRACT.md's "Stack A specifics").
   `cfncompat_custom_resource` (`Managed = "false"`, merge semantics).
 - `cdktf.json` -- cdktn app config (`app: "npx tsx main.ts"`).
 
-## Versions used (this synth)
+## Versions
 
 - `cdktn` / `cdktn-cli` `^0.24.0` (resolved `0.24.0`)
 - `@cdktn/provider-awscc` `^1.2.0` -> `hashicorp/awscc 1.98.0`
@@ -59,5 +59,5 @@ CONTRACT.md's "Stack A specifics").
 - `constructs` `~10.7.2` (pinned within the bindings' shared peer range `>=10.6.0 <10.8.0`)
 - node `24.18.0`, typescript `^5.9.0`, tsx `^4.19.2`
 
-All three prebuilt provider packages peer on `cdktn ^0.24.0`, so `cdktn get` /
-`terraformProviders` in `cdktf.json` was not needed.
+All three prebuilt provider packages peer on `cdktn ^0.24.0`, so `cdktf.json` needs no
+`terraformProviders` entry and no `cdktn get` codegen step.

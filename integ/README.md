@@ -102,7 +102,7 @@ for inspection after a run.
 
 ```
 integ/
-  suite.go             # Suite interface + cdkSuite / tfSuite / cdktnSuite implementations
+  suite.go             # Suite interface + cdkSuite / tfSuite / cdktnSuite implementations (cdkSuite and cdktnSuite share cliSuite)
   harness_test.go      # TestAwsCdk, TestTerraformAwscc, TestTerraformAws, TestTerraformCfncompat, TestCdktn -- the shared CONTRACT.md flow
   assert.go            # assertNotificationTargets, assertDelivery, assertNoCrossDelivery
   aws/

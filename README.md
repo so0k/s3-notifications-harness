@@ -36,6 +36,6 @@ aws-vault exec --no-session tcons-vincent -- make -C integ test
 ## Docs
 
 - [CONTRACT.md](CONTRACT.md) — cross-suite contract: names, inputs, outputs, test flow (single source of truth)
-- [docs/OPTIONS.md](docs/OPTIONS.md) — the options considered for the cfncompat polyfill, and why `terraform/cfncompat/` is the one built
-- [docs/RESULTS.md](docs/RESULTS.md) — append-only log of observed run results
+- [docs/OPTIONS.md](docs/OPTIONS.md) — the options considered for the cfncompat polyfill, which of them are built (`terraform/cfncompat/`, `cdktn/`), and what is left
+- [docs/RESULTS.md](docs/RESULTS.md) — index of the append-only per-run result documents under `docs/results/`
 - [awscdk/README.md](awscdk/README.md), [terraform/README.md](terraform/README.md), [cdktn/README.md](cdktn/README.md), [integ/README.md](integ/README.md) — per-suite usage

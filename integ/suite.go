@@ -47,54 +47,31 @@ type Suite interface {
 // cdkSuite drives the awscdk/ app via the `cdk` CLI (through `npx`), run from
 // the awscdk/ directory (relative to integ/, where `go test` runs).
 type cdkSuite struct {
-	suffix string
+	cli cliSuite
 }
 
 func NewCDKSuite(suffix string) *cdkSuite {
-	return &cdkSuite{suffix: suffix}
+	return &cdkSuite{cli: cliSuite{tool: "cdk", workDir: "../awscdk", suffix: suffix}}
 }
 
 func (s *cdkSuite) Name() string { return "cdk" }
 
-const cdkWorkDir = "../awscdk"
-
 // stackName returns e.g. "S3nHarnessA-<suffix>" for x == "a".
 func (s *cdkSuite) stackName(x string) string {
-	return fmt.Sprintf("S3nHarness%s-%s", upper1(x), s.suffix)
-}
-
-// outputsFile is a deterministic (not randomly-named) path so a later stage
-// -- or a later `go test` invocation with SKIP_deploy_<x>=true against the
-// same suffix -- can still find the outputs from a prior Deploy.
-func (s *cdkSuite) outputsFile(x string) string {
-	return filepath.Join(os.TempDir(), fmt.Sprintf("s3n-harness-%s-cdk-%s.outputs.json", s.suffix, x))
+	return fmt.Sprintf("S3nHarness%s-%s", upper1(x), s.cli.suffix)
 }
 
 func (s *cdkSuite) Deploy(t *testing.T, x string) {
 	name := s.stackName(x)
-	outFile := s.outputsFile(x)
-	_ = os.Remove(outFile) // start clean so a failed deploy can't leave a stale outputs file behind
+	outFile := s.cli.freshOutputsFile(x)
 
-	shell.RunCommandAndGetOutput(t, shell.Command{
-		Command:    "npx",
-		Args:       []string{"cdk", "deploy", name, "-c", "suffix=" + s.suffix, "--require-approval", "never", "--outputs-file", outFile},
-		WorkingDir: cdkWorkDir,
-	})
+	out, err := s.cli.run(t, "deploy", name, "-c", "suffix="+s.cli.suffix, "--require-approval", "never", "--outputs-file", outFile)
+	require.NoError(t, err, "cdk deploy %s failed:\n%s", name, out)
 }
 
 func (s *cdkSuite) Plan(t *testing.T, x string) string {
 	name := s.stackName(x)
-	out, err := shell.RunCommandAndGetOutputE(t, shell.Command{
-		Command:    "npx",
-		Args:       []string{"cdk", "diff", name, "-c", "suffix=" + s.suffix},
-		WorkingDir: cdkWorkDir,
-	})
-	if err != nil {
-		// `cdk diff` exits non-zero whenever there are pending changes to apply --
-		// that's the normal case here (first deploy of a stack), not a Plan failure.
-		t.Logf("cdk diff %s exited non-zero (expected when there are pending changes): %v", name, err)
-	}
-	return out
+	return s.cli.plan(t, name, "diff", name, "-c", "suffix="+s.cli.suffix)
 }
 
 // cdkOutputKeys maps the CDK app's CfnOutput logical ids to CONTRACT.md's canonical output
@@ -110,19 +87,13 @@ var cdkOutputKeys = map[string]string{
 
 func (s *cdkSuite) Outputs(t *testing.T, x string) map[string]string {
 	name := s.stackName(x)
-	outFile := s.outputsFile(x)
+	outFile := s.cli.outputsFile(x)
 
 	data, err := os.ReadFile(outFile)
 	require.NoError(t, err, "reading cdk outputs file %s -- did Deploy(%s) run first?", outFile, x)
 
-	var all map[string]map[string]string
-	require.NoError(t, json.Unmarshal(data, &all), "parsing cdk outputs file %s", outFile)
-
-	stackOutputs, ok := all[name]
-	require.True(t, ok, "no outputs recorded for stack %s in %s (keys present: %v)", name, outFile, mapKeys(all))
-
-	out := make(map[string]string, len(stackOutputs))
-	for k, v := range stackOutputs {
+	out := make(map[string]string)
+	for k, v := range s.cli.stackOutputs(t, data, outFile, name) {
 		if canonical, ok := cdkOutputKeys[k]; ok {
 			k = canonical
 		}
@@ -133,16 +104,7 @@ func (s *cdkSuite) Outputs(t *testing.T, x string) map[string]string {
 
 func (s *cdkSuite) Destroy(t *testing.T, x string) {
 	name := s.stackName(x)
-	out, err := shell.RunCommandAndGetOutputE(t, shell.Command{
-		Command:    "npx",
-		Args:       []string{"cdk", "destroy", name, "-c", "suffix=" + s.suffix, "--force"},
-		WorkingDir: cdkWorkDir,
-	})
-	t.Logf("cdk destroy %s:\n%s", name, out)
-	if err != nil {
-		// Cleanup must tolerate the stack not existing (e.g. its Deploy never ran).
-		t.Logf("cdk destroy %s returned an error (tolerated during cleanup): %v", name, err)
-	}
+	s.cli.destroy(t, name, "destroy", name, "-c", "suffix="+s.cli.suffix, "--force")
 }
 
 // ---------------------------------------------------------------------------
@@ -259,70 +221,44 @@ func (s *tfSuite) Destroy(t *testing.T, x string) {
 // cdkSuite/tfSuite, every stage needs SUFFIX in the environment: the app reads it
 // directly (see cdktn/main.ts) rather than taking it as a CLI var/context flag.
 type cdktnSuite struct {
-	suffix string
+	cli cliSuite
 }
 
 func NewCdktnSuite(suffix string) *cdktnSuite {
-	return &cdktnSuite{suffix: suffix}
+	return &cdktnSuite{cli: cliSuite{
+		tool:    "cdktn",
+		workDir: "../cdktn",
+		suffix:  suffix,
+		env:     map[string]string{"SUFFIX": suffix},
+	}}
 }
 
 func (s *cdktnSuite) Name() string { return "cdktn" }
-
-const cdktnWorkDir = "../cdktn"
 
 // stackName returns e.g. "s3n-harness-a-<suffix>" for x == "a" -- the TerraformStack
 // id cdktn/main.ts constructs each stack with, and so also the stack's cdktf.out
 // directory name and its key in an --outputs-file's JSON.
 func (s *cdktnSuite) stackName(x string) string {
-	return fmt.Sprintf("s3n-harness-%s-%s", x, s.suffix)
-}
-
-func (s *cdktnSuite) env() map[string]string {
-	return map[string]string{"SUFFIX": s.suffix}
-}
-
-// outputsFile is a deterministic (not randomly-named) path so a later stage -- or a
-// later `go test` invocation with SKIP_deploy_<x>=true against the same suffix -- can
-// still find the outputs from a prior Deploy.
-func (s *cdktnSuite) outputsFile(x string) string {
-	return filepath.Join(os.TempDir(), fmt.Sprintf("s3n-harness-%s-cdktn-%s.outputs.json", s.suffix, x))
+	return fmt.Sprintf("s3n-harness-%s-%s", x, s.cli.suffix)
 }
 
 func (s *cdktnSuite) Deploy(t *testing.T, x string) {
 	name := s.stackName(x)
-	outFile := s.outputsFile(x)
-	_ = os.Remove(outFile) // start clean so a failed deploy can't leave a stale outputs file behind
+	outFile := s.cli.freshOutputsFile(x)
 
-	// Cloud Control occasionally fails a CreateResource with a bare "InternalFailure"
-	// (seen on AWS::IAM::Role); a second apply converges, so retry that one signature.
-	cmd := shell.Command{
-		Command:    "npx",
-		Args:       []string{"cdktn", "deploy", name, "--auto-approve", "--outputs-file", outFile},
-		WorkingDir: cdktnWorkDir,
-		Env:        s.env(),
-	}
-	out, err := shell.RunCommandAndGetOutputE(t, cmd)
+	out, err := s.cli.run(t, "deploy", name, "--auto-approve", "--outputs-file", outFile)
 	if err != nil && strings.Contains(out, "ErrorCode: InternalFailure") {
+		// Cloud Control occasionally fails a CreateResource with a bare "InternalFailure"
+		// (AWS::IAM::Role); a second apply converges, so retry that one signature.
 		t.Logf("[cdktn] %s: Cloud Control InternalFailure, retrying deploy once", name)
-		out, err = shell.RunCommandAndGetOutputE(t, cmd)
+		out, err = s.cli.run(t, "deploy", name, "--auto-approve", "--outputs-file", outFile)
 	}
 	require.NoError(t, err, "cdktn deploy %s failed:\n%s", name, out)
 }
 
 func (s *cdktnSuite) Plan(t *testing.T, x string) string {
 	name := s.stackName(x)
-	out, err := shell.RunCommandAndGetOutputE(t, shell.Command{
-		Command:    "npx",
-		Args:       []string{"cdktn", "diff", name},
-		WorkingDir: cdktnWorkDir,
-		Env:        s.env(),
-	})
-	if err != nil {
-		// `cdktn diff` exits non-zero whenever there are pending changes to apply --
-		// that's the normal case here (first deploy of a stack), not a Plan failure.
-		t.Logf("cdktn diff %s exited non-zero (expected when there are pending changes): %v", name, err)
-	}
-	return out
+	return s.cli.plan(t, name, "diff", name)
 }
 
 // Outputs reads the outputs file Deploy(x) wrote (cdktn/main.ts's TerraformOutput ids
@@ -332,42 +268,91 @@ func (s *cdktnSuite) Plan(t *testing.T, x string) string {
 // reusing state from an earlier run), falls back to asking cdktn directly.
 func (s *cdktnSuite) Outputs(t *testing.T, x string) map[string]string {
 	name := s.stackName(x)
-	outFile := s.outputsFile(x)
+	outFile := s.cli.outputsFile(x)
 
 	data, err := os.ReadFile(outFile)
 	if err != nil {
 		t.Logf("[cdktn] outputs file %s not found (%v); falling back to `cdktn output --outputs-file`", outFile, err)
-		shell.RunCommandAndGetOutput(t, shell.Command{
-			Command:    "npx",
-			Args:       []string{"cdktn", "output", name, "--outputs-file", outFile},
-			WorkingDir: cdktnWorkDir,
-			Env:        s.env(),
-		})
+		out, runErr := s.cli.run(t, "output", name, "--outputs-file", outFile)
+		require.NoError(t, runErr, "cdktn output %s failed:\n%s", name, out)
 		data, err = os.ReadFile(outFile)
 		require.NoError(t, err, "reading cdktn outputs file %s after fallback `cdktn output` -- did Deploy(%s) run first?", outFile, x)
 	}
 
-	var all map[string]map[string]string
-	require.NoError(t, json.Unmarshal(data, &all), "parsing cdktn outputs file %s", outFile)
-
-	stackOutputs, ok := all[name]
-	require.True(t, ok, "no outputs recorded for stack %s in %s (keys present: %v)", name, outFile, mapKeys(all))
-	return stackOutputs
+	return s.cli.stackOutputs(t, data, outFile, name)
 }
 
 func (s *cdktnSuite) Destroy(t *testing.T, x string) {
 	name := s.stackName(x)
-	out, err := shell.RunCommandAndGetOutputE(t, shell.Command{
+	s.cli.destroy(t, name, "destroy", name, "--auto-approve")
+}
+
+// ---------------------------------------------------------------------------
+// cliSuite -- shared by the two CLI-driven suites (cdkSuite, cdktnSuite)
+// ---------------------------------------------------------------------------
+
+// cliSuite is what the cdk and cdktn suites have in common: one `npx <tool>` CLI
+// invoked from a sibling directory of integ/ (where `go test` runs), and a JSON
+// outputs file per stack. tfSuite shares none of it -- it goes through terratest's
+// terraform module rather than a CLI.
+type cliSuite struct {
+	tool    string
+	workDir string
+	suffix  string
+	env     map[string]string // extra environment for every invocation, nil if none
+}
+
+func (c cliSuite) run(t *testing.T, args ...string) (string, error) {
+	return shell.RunCommandAndGetOutputE(t, shell.Command{
 		Command:    "npx",
-		Args:       []string{"cdktn", "destroy", name, "--auto-approve"},
-		WorkingDir: cdktnWorkDir,
-		Env:        s.env(),
+		Args:       append([]string{c.tool}, args...),
+		WorkingDir: c.workDir,
+		Env:        c.env,
 	})
-	t.Logf("cdktn destroy %s:\n%s", name, out)
+}
+
+// outputsFile is a deterministic (not randomly-named) path so a later stage -- or a
+// later `go test` invocation with SKIP_deploy_<x>=true against the same suffix -- can
+// still find the outputs from a prior Deploy.
+func (c cliSuite) outputsFile(x string) string {
+	return filepath.Join(os.TempDir(), fmt.Sprintf("s3n-harness-%s-%s-%s.outputs.json", c.suffix, c.tool, x))
+}
+
+func (c cliSuite) freshOutputsFile(x string) string {
+	f := c.outputsFile(x)
+	_ = os.Remove(f) // start clean so a failed deploy can't leave a stale outputs file behind
+	return f
+}
+
+// plan runs the tool's diff subcommand for logging. Both CLIs exit non-zero whenever
+// there are pending changes to apply -- the normal case here (first deploy of a
+// stack), not a Plan failure.
+func (c cliSuite) plan(t *testing.T, name string, args ...string) string {
+	out, err := c.run(t, args...)
+	if err != nil {
+		t.Logf("%s diff %s exited non-zero (expected when there are pending changes): %v", c.tool, name, err)
+	}
+	return out
+}
+
+func (c cliSuite) destroy(t *testing.T, name string, args ...string) {
+	out, err := c.run(t, args...)
+	t.Logf("%s destroy %s:\n%s", c.tool, name, out)
 	if err != nil {
 		// Cleanup must tolerate the stack not existing (e.g. its Deploy never ran).
-		t.Logf("cdktn destroy %s returned an error (tolerated during cleanup): %v", name, err)
+		t.Logf("%s destroy %s returned an error (tolerated during cleanup): %v", c.tool, name, err)
 	}
+}
+
+// stackOutputs picks stack name's entry out of a `--outputs-file` JSON document,
+// which is keyed by stack name.
+func (c cliSuite) stackOutputs(t *testing.T, data []byte, file, name string) map[string]string {
+	var all map[string]map[string]string
+	require.NoError(t, json.Unmarshal(data, &all), "parsing %s outputs file %s", c.tool, file)
+
+	stackOutputs, ok := all[name]
+	require.True(t, ok, "no outputs recorded for stack %s in %s (keys present: %v)", name, file, mapKeys(all))
+	return stackOutputs
 }
 
 // ---------------------------------------------------------------------------
