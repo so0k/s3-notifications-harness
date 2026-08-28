@@ -103,9 +103,9 @@ func runHarness(t *testing.T, suite Suite, suffix, region string) {
 	// tolerates any stack never having been (successfully) deployed, and empties the
 	// bucket -- all object versions and delete markers -- before destroying the owning
 	// stack A. Unconditional (and a harmless no-op for suites whose bucket already
-	// deletes non-empty on destroy, e.g. CDK's autoDeleteObjects or terraform/aws's and
-	// terraform/cfncompat's force_destroy = true), because terraform/awscc's
-	// awscc_s3_bucket has no such equivalent and needs it.
+	// deletes non-empty on destroy, e.g. CDK's autoDeleteObjects or terraform/aws's
+	// force_destroy = true), because the awscc_s3_bucket that terraform/awscc and
+	// terraform/cfncompat both use has no such equivalent and needs it.
 	defer test_structure.RunTestStage(t, "cleanup", func() {
 		t.Logf("[cleanup] emptying bucket %s before destroying owning stack a", bucket)
 		if err := harnessaws.EmptyBucket(t, region, bucket); err != nil {

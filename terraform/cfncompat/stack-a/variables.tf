@@ -6,5 +6,5 @@ variable "suffix" {
 variable "region" {
   type        = string
   default     = "us-east-1"
-  description = "AWS region for the aws and cfncompat providers."
+  description = "AWS region for all providers (awscc, aws, cfncompat)."
 }

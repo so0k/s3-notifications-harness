@@ -13,8 +13,9 @@ TerraConstructs (cdktn 0.23, `@cdktn/provider-aws`) has a single authoritative
 `aws_s3_bucket_notification` and a TODO for the custom-resource approach.
 
 ## Option A — HCL scenario `terraform/cfncompat/` (spike first)
-Fourth sibling next to `awscc/` and `aws/`: each stack deploys the CDK python handler
-(archive_file → aws_lambda_function python3.12) + role (Get/PutBucketNotification) +
+Fourth sibling next to `awscc/` and `aws/`, built on the same `hashicorp/awscc` resources as
+`awscc/`: each stack deploys the CDK python handler (awscc_lambda_function python3.12, source
+inlined via `code.zip_file = file(...)`) + role (Get/PutBucketNotification) +
 `cfncompat_custom_resource { service_token, resource_properties = { BucketName,
 NotificationConfiguration, Managed = "false" }, stack_id = "<stack>" }`, one response bucket
 per stack (better for destroy isolation than one shared per run -- see
@@ -23,7 +24,7 @@ per stack (better for destroy isolation than one shared per run -- see
   isolates provider bugs from construct/tooling bugs; directly reusable as a cfncompat
   integ fixture.
 - Cons: no constructs, so it says nothing about the cdktn binding/asset path; HCL boilerplate
-  (handler zip, role, response bucket) is repeated per stack.
+  (handler source, role, response bucket) is repeated per stack.
 
 ## Option B — cdktn TypeScript app using `@cdktn/provider-cfncompat`
 `cdktn/` sibling app (cdktn 0.24, `@cdktn/provider-aws` or `-awscc`, `@cdktn/provider-cfncompat`
