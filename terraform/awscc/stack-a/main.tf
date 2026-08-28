@@ -27,7 +27,7 @@ resource "awscc_s3_bucket" "bucket" {
       filter = {
         s3_key = {
           rules = [{
-            name  = "prefix"
+            name  = "Prefix"
             value = "a/"
           }]
         }
